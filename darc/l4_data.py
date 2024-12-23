@@ -25,6 +25,7 @@ class L4DataGroup1:
         Returns:
             Bits: Buffer
         """
+
         start_of_headding = 0x01
         data_group_data = reverse_bits(self.data_group_data.bytes)
         data_group_size = len(data_group_data)
@@ -52,6 +53,7 @@ class L4DataGroup1:
         Returns:
             bool: True if CRC is valid, else False
         """
+
         data_buffer = self.to_buffer()[:-16]
         return crc_16_darc(data_buffer.bytes) == self.crc
 
@@ -65,7 +67,7 @@ class L4DataGroup1:
         """Construct from buffer
 
         Args:
-            service_id (DarcL3DataPacketServiceIdentificationCode): Service ID
+            service_id (L3DataPacketServiceIdentificationCode): Service ID
             data_group_number (int): Data Group number
             buffer (Bits): Buffer
 
@@ -73,8 +75,9 @@ class L4DataGroup1:
             ValueError: Invalid start_of_headding
 
         Returns:
-            Self: DarcL4DataGroup1 instance
+            Self: L4DataGroup1 instance
         """
+
         if len(buffer) < 48:
             raise ValueError("buffer length must be greater than or equal to 48.")
 
@@ -115,11 +118,12 @@ class L4DataGroup2:
         """Constructor
 
         Args:
-            service_id (DarcL3DataPacketServiceIdentificationCode): Service ID
+            service_id (L3DataPacketServiceIdentificationCode): Service ID
             data_group_number (int): Data Group number
             segments_data (Bits): Segments data
             crc (int | None): Recorded CRC value
         """
+
         # Metadata
         self.service_id = service_id
         self.data_group_number = data_group_number
@@ -133,6 +137,7 @@ class L4DataGroup2:
         Returns:
             bool: True if has CRC value, else None
         """
+
         return 160 < len(self.segments_data)
 
     def to_buffer(self) -> Bits:
@@ -141,6 +146,7 @@ class L4DataGroup2:
         Returns:
             Bits: Buffer
         """
+
         segments_data = reverse_bits(self.segments_data.bytes)
         segments_data_size = len(segments_data)
         total_size = 2 + segments_data_size if self.has_crc() else segments_data_size
@@ -160,6 +166,7 @@ class L4DataGroup2:
         Returns:
             bool: True if CRC is valid, else False
         """
+
         if not self.has_crc():
             return True
 
@@ -176,12 +183,12 @@ class L4DataGroup2:
         """Construct from buffer
 
         Args:
-            service_id (DarcL3DataPacketServiceIdentificationCode): Service ID
+            service_id (L3DataPacketServiceIdentificationCode): Service ID
             data_group_number (int): Data Group number
             buffer (Bits): Buffer
 
         Returns:
-            Self: DarcL4DataGroup2 instance
+            Self: L4DataGroup2 instance
         """
 
         crc: int | None = None

@@ -46,8 +46,9 @@ class L3DataPacket:
             ValueError: Invalid buffer length
 
         Returns:
-            Self: DarcL3DataPacket instance
+            Self: L3DataPacket instance
         """
+
         buffer = Bits(buffer)
         if len(buffer) != 176:
             raise ValueError("buffer length must be 176.")

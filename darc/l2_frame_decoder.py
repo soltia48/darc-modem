@@ -15,21 +15,24 @@ class L2FrameDecoder:
 
     def __init__(self) -> None:
         """Constructor"""
+
         self.__block_buffer: list[L2InformationBlock | L2ParityBlock] = []
 
     def reset(self) -> None:
         """Reset"""
+
         self.__block_buffer.clear()
 
     def push_block(self, block: L2InformationBlock | L2ParityBlock) -> L2Frame | None:
         """Push a Block
 
         Args:
-            block (DarcL2InformationBlock | DarcL2ParityBlock): Block
+            block (L2InformationBlock | L2ParityBlock): Block
 
         Returns:
-            DarcL2Frame | None: DarcL2Frame if frame detected, else None
+            L2Frame | None: L2Frame if frame detected, else None
         """
+
         current_block_number = len(self.__block_buffer) + 1
 
         # BIC1

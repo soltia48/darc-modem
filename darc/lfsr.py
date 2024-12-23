@@ -11,6 +11,7 @@ def lfsr(seed: int, polynomial: int) -> Generator[int, None, None]:
     Yields:
         Generator[int, None, None]: LFSR as a Generator
     """
+
     state = seed
     while True:
         lsb = state & 1

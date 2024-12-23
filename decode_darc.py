@@ -15,6 +15,7 @@ def configLogger(level: str):
     Args:
         level (str): Log level
     """
+
     level = logging._nameToLevel[level]
     logging.basicConfig(
         level=level,

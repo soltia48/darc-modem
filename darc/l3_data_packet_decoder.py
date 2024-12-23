@@ -9,11 +9,12 @@ class L3DataPacketDecoder:
         """Push a Frame
 
         Args:
-            frame (DarcL2Frame): Frame
+            frame (L2Frame): Frame
 
         Returns:
-            list[DarcL3DataPacket]: Data Packets
+            list[L3DataPacket]: Data Packets
         """
+
         return list(
             map(
                 lambda x: L3DataPacket.from_buffer(x.data_packet),

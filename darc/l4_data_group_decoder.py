@@ -12,6 +12,7 @@ class L4DataGroupDecoder:
 
     def __init__(self) -> None:
         """Constructor"""
+
         self.__data_group_buffers: dict[tuple[int, int], Bits] = {}
 
     def push_data_packets(
@@ -20,11 +21,12 @@ class L4DataGroupDecoder:
         """Push Data Packets
 
         Args:
-            data_packets (list[DarcL3DataPacket]): Data Packets
+            data_packets (list[L3DataPacket]): Data Packets
 
         Returns:
-            list[DarcL4DataGroup1 | DarcL4DataGroup2]: Data Groups
+            list[L4DataGroup1 | L4DataGroup2]: Data Groups
         """
+
         data_groups: list[L4DataGroup1 | L4DataGroup2] = []
 
         for data_packet in data_packets:

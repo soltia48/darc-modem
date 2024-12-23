@@ -29,6 +29,7 @@ class L2InformationBlock:
         Returns:
             bool: True if CRC is valid, else False
         """
+
         return crc_14_darc(self.data_packet.bytes) == self.crc
 
     def to_buffer(self) -> Bits:
@@ -37,6 +38,7 @@ class L2InformationBlock:
         Returns:
             Bits: Buffer
         """
+
         return pack("bits176, uint14", self.data_packet, self.crc)
 
     @classmethod
@@ -44,15 +46,16 @@ class L2InformationBlock:
         """Construct from buffer
 
         Args:
-            block_id (DarcL2BlockIdentificationCode): Block ID
+            block_id (L2BlockIdentificationCode): Block ID
             buffer (Bits): Buffer
 
         Raises:
             ValueError: Invalid buffer length
 
         Returns:
-            Self: DarcL2InformationBlock instance
+            Self: L2InformationBlock instance
         """
+
         if len(buffer) != 190 and len(buffer) != 272:
             raise ValueError("buffer length must be 190 or 272.")
 
@@ -81,6 +84,7 @@ class L2ParityBlock:
         Returns:
             Bits: Buffer
         """
+
         return self.vertical_parity
 
     @classmethod
@@ -88,15 +92,16 @@ class L2ParityBlock:
         """Construct from buffer
 
         Args:
-            block_id (DarcL2BlockIdentificationCode): Block ID
+            block_id (L2BlockIdentificationCode): Block ID
             buffer (Bits): Buffer
 
         Raises:
             ValueError: Invalid buffer length
 
         Returns:
-            Self: DarcL2ParityBlock instance
+            Self: L2ParityBlock instance
         """
+
         if len(buffer) != 190 and len(buffer) != 272:
             raise ValueError("buffer length must be 190 or 272.")
 
@@ -127,6 +132,7 @@ class L2Frame:
         Returns:
             Bits: Error corrected buffer. However, return original If cannot correct error
         """
+
         error_corrected_buffer = correct_error_dscc_272_190(buffer)
         if error_corrected_buffer is not None:
             buffer = error_corrected_buffer
@@ -140,14 +146,15 @@ class L2Frame:
         """Construct from Block buffer
 
         Args:
-            block_buffer (list[DarcL2InformationBlock  |  DarcL2ParityBlock]): Block buffer
+            block_buffer (list[L2InformationBlock  |  L2ParityBlock]): Block buffer
 
         Raises:
             ValueError: Invalid block_buffer length
 
         Returns:
-            Self: DarcL2Frame instance
+            Self: L2Frame instance
         """
+
         if len(block_buffer) != 272:
             raise ValueError("block_buffer length must be 272.")
 

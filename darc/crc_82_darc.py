@@ -1,4 +1,4 @@
-import bitstring
+from bitstring import Bits
 from logging import getLogger
 
 __logger = getLogger(__name__)
@@ -10,6 +10,7 @@ def __generate_crc_82_darc_table() -> list[int]:
     Returns:
         list[int]: CRC-82/DARC table
     """
+
     table = [0] * 256
     for i in range(256):
         value = i << 74
@@ -26,31 +27,33 @@ def __generate_crc_82_darc_table() -> list[int]:
 __crc_82_darc_table = __generate_crc_82_darc_table()
 
 
-def __crc_82_darc_table_driven(message: bytes | bitstring.Bits) -> int:
+def __crc_82_darc_table_driven(message: bytes | Bits) -> int:
     """Calculate CRC-82/DARC with table driven algorithm
 
     Args:
-        message (bytes | bitstring.Bits): Message
+        message (bytes | Bits): Message
 
     Returns:
         int: CRC value
     """
+
     crc = 0x000000000000000000000
     for value in message:
         crc = __crc_82_darc_table[((crc >> 74) ^ value) & 0xFF] ^ (crc << 8)
     return crc & 0x3FFFFFFFFFFFFFFFFFFFF
 
 
-def __crc_82_darc_bit_by_bit(message: bytes | bitstring.Bits, bits: int) -> int:
+def __crc_82_darc_bit_by_bit(message: bytes | Bits, bits: int) -> int:
     """Calculate CRC-82/DARC with bit by bit aigorithm
 
     Args:
-        message (bytes | bitstring.Bits): Message
+        message (bytes | Bits): Message
         bits (int): Number of bit in message
 
     Returns:
         int: CRC value
     """
+
     crc = 0x000000000000000000000
     for value in message:
         for i in range(8):
@@ -69,11 +72,11 @@ def __crc_82_darc_bit_by_bit(message: bytes | bitstring.Bits, bits: int) -> int:
     return crc & 0x3FFFFFFFFFFFFFFFFFFFF
 
 
-def crc_82_darc(message: bytes | bitstring.Bits, bits: int | None = None) -> int:
+def crc_82_darc(message: bytes | Bits, bits: int | None = None) -> int:
     """Calculate CRC-82/DARC
 
     Args:
-        message (bytes | bitstring.Bits): Message
+        message (bytes | Bits): Message
         bits (int | None, optional): Number of bit in message. Defaults to None.
 
     Returns:
@@ -88,9 +91,7 @@ def crc_82_darc(message: bytes | bitstring.Bits, bits: int | None = None) -> int
         return __crc_82_darc_bit_by_bit(message, bits)
 
 
-def __generate_bitflip_syndrome_map(
-    length: int, error_width: int
-) -> dict[int, bitstring.Bits]:
+def __generate_bitflip_syndrome_map(length: int, error_width: int) -> dict[int, Bits]:
     """Generate bitflip syndrome map
 
     Args:
@@ -98,9 +99,9 @@ def __generate_bitflip_syndrome_map(
         error_width (int): Error width
 
     Returns:
-        dict[int, bitstring.Bits]: Bitflip syndrome map
+        dict[int, Bits]: Bitflip syndrome map
     """
-    bitflip_syndrome_map: dict[int, bitstring.Bits] = dict()
+    bitflip_syndrome_map: dict[int, Bits] = dict()
     for i in range(1, error_width + 1):
         error_base = 1 << (i - 1) | 1
         counter_max = 2 ** (i - 2) if 2 < i else 1
@@ -108,7 +109,7 @@ def __generate_bitflip_syndrome_map(
             error_with_counter = error_base | j << 1
             for k in range(length - i):
                 error = error_with_counter << k
-                error_vector = bitstring.Bits(uint=error, length=length)
+                error_vector = Bits(uint=error, length=length)
                 bitflip_syndrome_map[crc_82_darc(error_vector, length)] = error_vector
     return bitflip_syndrome_map
 
@@ -116,14 +117,14 @@ def __generate_bitflip_syndrome_map(
 __parity_bitflip_syndrome_map_dscc_272_190 = __generate_bitflip_syndrome_map(272, 8)
 
 
-def correct_error_dscc_272_190(buffer: bitstring.Bits) -> bitstring.Bits | None:
+def correct_error_dscc_272_190(buffer: Bits) -> Bits | None:
     """Correct error with Difference Set Cyclic Codes (272,190)
 
     Args:
-        buffer (bitstring.Bits): Buffer
+        buffer (Bits): Buffer
 
     Returns:
-        bitstring.Bits | None: bitstring.Bits if data corrected, else None
+        Bits | None: Bits if data corrected, else None
     """
     if len(buffer) != 272:
         raise ValueError("buffer length must be 272.")

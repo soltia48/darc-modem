@@ -12,6 +12,7 @@ class L2BlockDecoder:
 
     def __init__(self) -> None:
         """Constructor"""
+
         self.__current_bic = 0x0000
         self.__data_buffer = BitStream()
         self.__lfsr = lfsr(0x155, 0x110)
@@ -22,7 +23,7 @@ class L2BlockDecoder:
         """Get detected Block Identification Code
 
         Returns:
-            DarcL2BlockIdentificationCode | None: DarcL2BlockIdentificationCode if BIC is detected, else None
+            L2BlockIdentificationCode | None: L2BlockIdentificationCode if BIC is detected, else None
         """
 
         bics = [
@@ -47,6 +48,7 @@ class L2BlockDecoder:
         Returns:
             bool: True if Information Block detected, else False
         """
+
         detected_bic = self.__detected_bic()
         return (
             detected_bic == L2BlockIdentificationCode.BIC_1
@@ -60,11 +62,13 @@ class L2BlockDecoder:
         Returns:
             bool: True if Parity Block detected, else False
         """
+
         detected_bic = self.__detected_bic()
         return detected_bic == L2BlockIdentificationCode.BIC_4
 
     def reset(self) -> None:
         """Reset the decoder"""
+
         self.__current_bic = 0x0000
         self.__data_buffer.clear()
         self.__lfsr = lfsr(0x155, 0x110)
@@ -76,8 +80,9 @@ class L2BlockDecoder:
             bit (int): 0 or 1
 
         Returns:
-            DarcL2InformationBlock | DarcL2ParityBlock | None: DarcL2BlockType if any Block detected, else None
+            L2InformationBlock | L2ParityBlock | None: L2BlockType if any Block detected, else None
         """
+
         if self.__detected_bic() is None:
             self.__current_bic = ((self.__current_bic << 1) | bit) & 0xFFFF
             return

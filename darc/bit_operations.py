@@ -7,6 +7,7 @@ def reverse_bits(buffer: bytes) -> bytes:
     Returns:
         bytes: Bit reversed buffer
     """
+
     result = b""
     for value in buffer:
         value = (value & 0xF0) >> 4 | (value & 0x0F) << 4
