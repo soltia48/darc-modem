@@ -2,11 +2,11 @@ import argparse
 import logging
 import sys
 
-from darc.l2_block_decoder import DarcL2BlockDecoder
-from darc.l2_frame_decoder import DarcL2FrameDecoder
-from darc.l3_data_packet_decoder import DarcL3DataPacketDecoder
-from darc.l4_data import DarcL4DataGroup1, DarcL4DataGroup2
-from darc.l4_data_group_decoder import DarcL4DataGroupDecoder
+from darc.l2_block_decoder import L2BlockDecoder
+from darc.l2_frame_decoder import L2FrameDecoder
+from darc.l3_data_packet_decoder import L3DataPacketDecoder
+from darc.l4_data import L4DataGroup1, L4DataGroup2
+from darc.l4_data_group_decoder import L4DataGroupDecoder
 
 
 def configLogger(level: str):
@@ -36,10 +36,10 @@ def main(argv=None):
 
     configLogger(args.loglevel)
 
-    l2_block_decoder = DarcL2BlockDecoder()
-    l2_frame_decoder = DarcL2FrameDecoder()
-    l3_data_packet_decoder = DarcL3DataPacketDecoder()
-    l4_data_group_decoder = DarcL4DataGroupDecoder()
+    l2_block_decoder = L2BlockDecoder()
+    l2_frame_decoder = L2FrameDecoder()
+    l3_data_packet_decoder = L3DataPacketDecoder()
+    l4_data_group_decoder = L4DataGroupDecoder()
 
     if args.input_path == "-":
         while True:
@@ -53,11 +53,11 @@ def main(argv=None):
             data_packets = l3_data_packet_decoder.push_frame(frame)
             data_groups = l4_data_group_decoder.push_data_packets(data_packets)
             for data_group in data_groups:
-                if isinstance(data_group, DarcL4DataGroup1):
+                if isinstance(data_group, L4DataGroup1):
                     print(
                         f"is_crc_valid={data_group.is_crc_valid()} service_id={data_group.service_id.name} data_group_number={hex(data_group.data_group_number)} data_group_link={hex(data_group.data_group_link)} data_group_data={data_group.data_group_data.bytes.hex()} end_of_data_group={hex(data_group.end_of_data_group)} crc={hex(data_group.crc)}"
                     )
-                elif isinstance(data_group, DarcL4DataGroup2):
+                elif isinstance(data_group, L4DataGroup2):
                     crc_string = (
                         "None" if data_group.crc is None else hex(data_group.crc)
                     )

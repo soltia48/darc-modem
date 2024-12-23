@@ -17,7 +17,7 @@ class L2BlockIdentificationCode(IntEnum):
 
 @dataclass
 class L2InformationBlock:
-    """DARC L2 Information Block"""
+    """L2 Information Block"""
 
     block_id: L2BlockIdentificationCode
     data_packet: Bits
@@ -70,7 +70,7 @@ class L2InformationBlock:
 
 @dataclass
 class L2ParityBlock:
-    """DARC L2 Parity Block"""
+    """L2 Parity Block"""
 
     block_id: L2BlockIdentificationCode
     vertical_parity: Bits
@@ -113,7 +113,7 @@ class L2ParityBlock:
 
 @dataclass
 class L2Frame:
-    """DARC L2 Frame"""
+    """L2 Frame"""
 
     blocks: list[L2InformationBlock]
 

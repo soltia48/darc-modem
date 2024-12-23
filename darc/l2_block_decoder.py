@@ -6,7 +6,7 @@ from .lfsr import lfsr
 
 
 class L2BlockDecoder:
-    """DARC L2 Block Decoder"""
+    """L2 Block Decoder"""
 
     __logger = getLogger(__name__)
 

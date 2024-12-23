@@ -1,4 +1,4 @@
-import bitstring
+from bitstring import Bits
 from logging import getLogger
 
 from .l3_data import L3DataPacketServiceIdentificationCode, L3DataPacket
@@ -12,7 +12,7 @@ class L4DataGroupDecoder:
 
     def __init__(self) -> None:
         """Constructor"""
-        self.__data_group_buffers: dict[tuple[int, int], bitstring.Bits] = {}
+        self.__data_group_buffers: dict[tuple[int, int], Bits] = {}
 
     def push_data_packets(
         self, data_packets: list[L3DataPacket]

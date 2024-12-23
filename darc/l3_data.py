@@ -1,4 +1,4 @@
-import bitstring
+from bitstring import Bits
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Self
@@ -25,7 +25,7 @@ class L3DataPacketServiceIdentificationCode(IntEnum):
 
 @dataclass
 class L3DataPacket:
-    """DARC L3 Data Packet"""
+    """L3 Data Packet"""
 
     service_id: L3DataPacketServiceIdentificationCode
     decode_id_flag: int
@@ -33,7 +33,7 @@ class L3DataPacket:
     update_flag: int
     data_group_number: int
     data_packet_number: int
-    data_block: bitstring.Bits
+    data_block: Bits
 
     @classmethod
     def from_buffer(cls, buffer: bytes) -> Self:
@@ -48,7 +48,7 @@ class L3DataPacket:
         Returns:
             Self: DarcL3DataPacket instance
         """
-        buffer = bitstring.Bits(buffer)
+        buffer = Bits(buffer)
         if len(buffer) != 176:
             raise ValueError("buffer length must be 176.")
 

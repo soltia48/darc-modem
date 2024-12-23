@@ -8,8 +8,8 @@ from .l2_data import (
 )
 
 
-class DarcL2FrameDecoder:
-    """DARC L2 Frame Decoder"""
+class L2FrameDecoder:
+    """L2 Frame Decoder"""
 
     __logger = getLogger(__name__)
 

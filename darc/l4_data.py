@@ -1,50 +1,29 @@
-import bitstring
+from bitstring import Bits, pack
 from logging import getLogger
 from typing import Self
 
 from .bit_operations import reverse_bits
 from .crc_16_darc import crc_16_darc
-from .l3_data import DarcL3DataPacketServiceIdentificationCode
+from .l3_data import L3DataPacketServiceIdentificationCode
 
 
 class L4DataGroup1:
-    """DARC L4 Data Group Composition 1"""
+    """L4 Data Group Composition 1"""
 
     __logger = getLogger(__name__)
 
-    def __init__(
-        self,
-        service_id: DarcL3DataPacketServiceIdentificationCode,
-        data_group_number: int,
-        data_group_link: int,
-        data_group_data: bitstring.Bits,
-        end_of_data_group: int,
-        crc: int,
-    ) -> None:
-        """Constructor
+    service_id: L3DataPacketServiceIdentificationCode
+    data_group_number: int
+    data_group_link: int
+    data_group_data: Bits
+    end_of_data_group: int
+    crc: int
 
-        Args:
-            service_id (DarcL3DataPacketServiceIdentificationCode): Service ID
-            data_group_number (int): Data Group number
-            data_group_link (int): Data Group link
-            data_group_data (bitstring.Bits): Data Group data
-            end_of_data_group (int): End of Data Group
-            crc (int): Recorded CRC value
-        """
-        # Metadata
-        self.service_id = service_id
-        self.data_group_number = data_group_number
-
-        self.data_group_link = data_group_link
-        self.data_group_data = data_group_data
-        self.end_of_data_group = end_of_data_group
-        self.crc = crc
-
-    def to_buffer(self) -> bitstring.Bits:
+    def to_buffer(self) -> Bits:
         """To buffer
 
         Returns:
-            bitstring.Bits: Buffer
+            Bits: Buffer
         """
         start_of_headding = 0x01
         data_group_data = reverse_bits(self.data_group_data.bytes)
@@ -52,7 +31,7 @@ class L4DataGroup1:
         total_size = 6 + data_group_size
         padding_length = 8 * (18 - total_size % 18)
 
-        buffer = bitstring.pack(
+        buffer = pack(
             f"uint8, uint1, uint15, bytes, pad{padding_length}, uint8, uint16",
             start_of_headding,
             self.data_group_link,
@@ -65,7 +44,7 @@ class L4DataGroup1:
         buffer[8:16] = buffer[8:16][::-1]
         buffer[16:24] = buffer[16:24][::-1]
         buffer[-24:-16] = buffer[-24:-16][::-1]
-        return bitstring.Bits(buffer)
+        return Bits(buffer)
 
     def is_crc_valid(self) -> bool:
         """Is CRC valid
@@ -79,16 +58,16 @@ class L4DataGroup1:
     @classmethod
     def from_buffer(
         cls,
-        service_id: DarcL3DataPacketServiceIdentificationCode,
+        service_id: L3DataPacketServiceIdentificationCode,
         data_group_number: int,
-        buffer: bitstring.Bits,
+        buffer: Bits,
     ) -> Self:
         """Construct from buffer
 
         Args:
             service_id (DarcL3DataPacketServiceIdentificationCode): Service ID
             data_group_number (int): Data Group number
-            buffer (bitstring.Bits): Buffer
+            buffer (Bits): Buffer
 
         Raises:
             ValueError: Invalid start_of_headding
@@ -107,7 +86,7 @@ class L4DataGroup1:
 
         data_group_link = buffer[15:16].uint
         data_group_size = buffer[8:15][::-1].uint << 8 | buffer[16:24][::-1].uint
-        data_group_data = bitstring.Bits(
+        data_group_data = Bits(
             reverse_bits(buffer[24 : 24 + 8 * data_group_size].bytes)
         )
         end_of_data_group = buffer[-24:-16][::-1].uint
@@ -124,13 +103,13 @@ class L4DataGroup1:
 
 
 class L4DataGroup2:
-    """DARC L4 Data Group Composition 2"""
+    """L4 Data Group Composition 2"""
 
     def __init__(
         self,
-        service_id: DarcL3DataPacketServiceIdentificationCode,
+        service_id: L3DataPacketServiceIdentificationCode,
         data_group_number: int,
-        segments_data: bitstring.Bits,
+        segments_data: Bits,
         crc: int | None,
     ) -> None:
         """Constructor
@@ -138,7 +117,7 @@ class L4DataGroup2:
         Args:
             service_id (DarcL3DataPacketServiceIdentificationCode): Service ID
             data_group_number (int): Data Group number
-            segments_data (bitstring.Bits): Segments data
+            segments_data (Bits): Segments data
             crc (int | None): Recorded CRC value
         """
         # Metadata
@@ -156,25 +135,24 @@ class L4DataGroup2:
         """
         return 160 < len(self.segments_data)
 
-    def to_buffer(self) -> bitstring.Bits:
+    def to_buffer(self) -> Bits:
         """To buffer
 
         Returns:
-            bitstring.Bits: Buffer
+            Bits: Buffer
         """
         segments_data = reverse_bits(self.segments_data.bytes)
         segments_data_size = len(segments_data)
         total_size = 2 + segments_data_size if self.has_crc() else segments_data_size
         padding_length = 8 * (20 - total_size % 20)
 
-        buffer: bitstring.BitStream
         if self.has_crc():
-            buffer = bitstring.pack(
+            buffer = pack(
                 f"bytes, pad{padding_length}, uint16", segments_data, self.crc
             )
         else:
-            buffer = bitstring.pack(f"bytes, pad{padding_length}", segments_data)
-        return bitstring.Bits(buffer)
+            buffer = pack(f"bytes, pad{padding_length}", segments_data)
+        return Bits(buffer)
 
     def is_crc_valid(self) -> bool:
         """Is CRC valid
@@ -191,27 +169,27 @@ class L4DataGroup2:
     @classmethod
     def from_buffer(
         cls,
-        service_id: DarcL3DataPacketServiceIdentificationCode,
+        service_id: L3DataPacketServiceIdentificationCode,
         data_group_number: int,
-        buffer: bitstring.Bits,
+        buffer: Bits,
     ) -> Self:
         """Construct from buffer
 
         Args:
             service_id (DarcL3DataPacketServiceIdentificationCode): Service ID
             data_group_number (int): Data Group number
-            buffer (bitstring.Bits): Buffer
+            buffer (Bits): Buffer
 
         Returns:
             Self: DarcL4DataGroup2 instance
         """
-        segments_data: bitstring.Bits
+
         crc: int | None = None
 
         if 160 < len(buffer):
-            segments_data = bitstring.Bits(reverse_bits(buffer[:-16].bytes))
+            segments_data = Bits(reverse_bits(buffer[:-16].bytes))
             crc = buffer[-16:].uint
         else:
-            segments_data = bitstring.Bits(reverse_bits(buffer.bytes))
+            segments_data = Bits(reverse_bits(buffer.bytes))
 
         return cls(service_id, data_group_number, segments_data, crc)
