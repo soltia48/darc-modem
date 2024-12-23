@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "darc-modem"
+version = "0.1.0"
+description = "Modem for Data Radio Channel (DARC)"
+authors = ["solti48 <soltia48@protonmail.com>"]
+license = "MIT"
+# readme = "README.md"
+packages = [
+    {include = "darc"},
+    {include = "darc_rx"}
+]
+
+[tool.poetry.scripts]
+darc-tx = "fdarc_rx.cli:main"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+bitstring = "^4.2.3"
+fire = "^0.7.0"
+fastcrc = "^0.3.2"
+
+[tool.poetry.group.dev.dependencies]
+black = "^24.10.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

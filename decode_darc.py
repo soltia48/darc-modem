@@ -2,11 +2,11 @@ import argparse
 import logging
 import sys
 
-from pydarc.darc_l2_block_decoder import DarcL2BlockDecoder
-from pydarc.darc_l2_frame_decoder import DarcL2FrameDecoder
-from pydarc.darc_l3_data_packet_decoder import DarcL3DataPacketDecoder
-from pydarc.darc_l4_data import DarcL4DataGroup1, DarcL4DataGroup2
-from pydarc.darc_l4_data_group_decoder import DarcL4DataGroupDecoder
+from darc.l2_block_decoder import DarcL2BlockDecoder
+from darc.l2_frame_decoder import DarcL2FrameDecoder
+from darc.l3_data_packet_decoder import DarcL3DataPacketDecoder
+from darc.l4_data import DarcL4DataGroup1, DarcL4DataGroup2
+from darc.l4_data_group_decoder import DarcL4DataGroupDecoder
 
 
 def configLogger(level: str):

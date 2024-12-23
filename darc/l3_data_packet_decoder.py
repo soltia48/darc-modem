@@ -1,13 +1,11 @@
-from logging import getLogger
-
-from pydarc.darc_l2_data import DarcL2Frame
-from pydarc.darc_l3_data import DarcL3DataPacket
+from .l2_data import L2Frame
+from .l3_data import L3DataPacket
 
 
 class DarcL3DataPacketDecoder:
     """DARC L3 Data Packet Decoder"""
 
-    def push_frame(self, frame: DarcL2Frame) -> list[DarcL3DataPacket]:
+    def push_frame(self, frame: L2Frame) -> list[L3DataPacket]:
         """Push a Frame
 
         Args:
@@ -18,7 +16,7 @@ class DarcL3DataPacketDecoder:
         """
         return list(
             map(
-                lambda x: DarcL3DataPacket.from_buffer(x.data_packet),
+                lambda x: L3DataPacket.from_buffer(x.data_packet),
                 frame.blocks,
             )
         )

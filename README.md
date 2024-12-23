@@ -33,4 +33,4 @@ options:
 
 [MIT](https://opensource.org/licenses/MIT)
 
-Copyright (c) 2023 soltia48 (ソルティアよんはち)
+Copyright (c) 2024 soltia48 (ソルティアよんはち)

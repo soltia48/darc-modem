@@ -2,12 +2,12 @@ import bitstring
 from logging import getLogger
 from typing import Self
 
-from pydarc.bit_operations import reverse_bits
-from pydarc.crc_16_darc import crc_16_darc
-from pydarc.darc_l3_data import DarcL3DataPacketServiceIdentificationCode
+from .bit_operations import reverse_bits
+from .crc_16_darc import crc_16_darc
+from .l3_data import DarcL3DataPacketServiceIdentificationCode
 
 
-class DarcL4DataGroup1:
+class L4DataGroup1:
     """DARC L4 Data Group Composition 1"""
 
     __logger = getLogger(__name__)
@@ -101,7 +101,7 @@ class DarcL4DataGroup1:
 
         start_of_headding = buffer[0:8][::-1].uint
         if start_of_headding != 0x01:
-            DarcL4DataGroup1.__logger.warning(
+            L4DataGroup1.__logger.warning(
                 f"start_of_headding is not 0x01. start_of_headding={hex(start_of_headding)}"
             )
 
@@ -123,7 +123,7 @@ class DarcL4DataGroup1:
         )
 
 
-class DarcL4DataGroup2:
+class L4DataGroup2:
     """DARC L4 Data Group Composition 2"""
 
     def __init__(

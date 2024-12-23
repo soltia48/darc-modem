@@ -1,0 +1,26 @@
+{
+  "name": "Dev Container",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "workspaceFolder": "/root/workspace/",
+  "remoteUser": "root",
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/root/workspace/,type=bind,consistency=cached",
+    "source=/dev/bus/usb/,target=/dev/bus/usb/,type=bind",
+    "source=/run/udev/,target=/run/udev/,type=bind,consistency=readonly"
+  ],
+  "runArgs": [
+    "--device-cgroup-rule=c *:* rw"
+  ],
+  "onCreateCommand": ".devcontainer/on_create.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.black-formatter",
+        "njpwerner.autodocstring"
+      ]
+    }
+  }
+}

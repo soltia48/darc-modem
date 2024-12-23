@@ -1,15 +1,11 @@
-import bitstring
+from bitstring import BitStream
 from logging import getLogger
 
-from pydarc.darc_l2_data import (
-    DarcL2BlockIdentificationCode,
-    DarcL2InformationBlock,
-    DarcL2ParityBlock,
-)
-from pydarc.lfsr import lfsr
+from .l2_data import L2BlockIdentificationCode, L2InformationBlock, L2ParityBlock
+from .lfsr import lfsr
 
 
-class DarcL2BlockDecoder:
+class L2BlockDecoder:
     """DARC L2 Block Decoder"""
 
     __logger = getLogger(__name__)
@@ -17,12 +13,12 @@ class DarcL2BlockDecoder:
     def __init__(self) -> None:
         """Constructor"""
         self.__current_bic = 0x0000
-        self.__data_buffer: bitstring.BitStream = bitstring.BitStream()
+        self.__data_buffer = BitStream()
         self.__lfsr = lfsr(0x155, 0x110)
 
         self.allowable_bic_errors = 2
 
-    def __detected_bic(self) -> DarcL2BlockIdentificationCode | None:
+    def __detected_bic(self) -> L2BlockIdentificationCode | None:
         """Get detected Block Identification Code
 
         Returns:
@@ -30,10 +26,10 @@ class DarcL2BlockDecoder:
         """
 
         bics = [
-            DarcL2BlockIdentificationCode.BIC_1,
-            DarcL2BlockIdentificationCode.BIC_2,
-            DarcL2BlockIdentificationCode.BIC_3,
-            DarcL2BlockIdentificationCode.BIC_4,
+            L2BlockIdentificationCode.BIC_1,
+            L2BlockIdentificationCode.BIC_2,
+            L2BlockIdentificationCode.BIC_3,
+            L2BlockIdentificationCode.BIC_4,
         ]
         bic_hamming_distances = list(
             map(lambda x: (x ^ self.__current_bic).bit_count(), bics)
@@ -53,9 +49,9 @@ class DarcL2BlockDecoder:
         """
         detected_bic = self.__detected_bic()
         return (
-            detected_bic == DarcL2BlockIdentificationCode.BIC_1
-            or detected_bic == DarcL2BlockIdentificationCode.BIC_2
-            or detected_bic == DarcL2BlockIdentificationCode.BIC_3
+            detected_bic == L2BlockIdentificationCode.BIC_1
+            or detected_bic == L2BlockIdentificationCode.BIC_2
+            or detected_bic == L2BlockIdentificationCode.BIC_3
         )
 
     def __is_parity_block_detected(self) -> bool:
@@ -65,7 +61,7 @@ class DarcL2BlockDecoder:
             bool: True if Parity Block detected, else False
         """
         detected_bic = self.__detected_bic()
-        return detected_bic == DarcL2BlockIdentificationCode.BIC_4
+        return detected_bic == L2BlockIdentificationCode.BIC_4
 
     def reset(self) -> None:
         """Reset the decoder"""
@@ -73,7 +69,7 @@ class DarcL2BlockDecoder:
         self.__data_buffer.clear()
         self.__lfsr = lfsr(0x155, 0x110)
 
-    def push_bit(self, bit: int) -> DarcL2InformationBlock | DarcL2ParityBlock | None:
+    def push_bit(self, bit: int) -> L2InformationBlock | L2ParityBlock | None:
         """Push a bit
 
         Args:
@@ -96,11 +92,10 @@ class DarcL2BlockDecoder:
             self.__logger.debug(
                 f"272 bits collected. block_id={block_id.name} data_buffer={self.__data_buffer}"
             )
-            block: DarcL2InformationBlock | DarcL2ParityBlock
             if self.__is_information_block_detected():
-                block = DarcL2InformationBlock.from_buffer(block_id, self.__data_buffer)
+                block = L2InformationBlock.from_buffer(block_id, self.__data_buffer)
             elif self.__is_parity_block_detected():
-                block = DarcL2ParityBlock.from_buffer(block_id, self.__data_buffer)
+                block = L2ParityBlock.from_buffer(block_id, self.__data_buffer)
             else:
                 raise ValueError("Unknown Block detected.")
             self.__logger.debug(f"A block decoded. block_id={block.block_id.name}")
