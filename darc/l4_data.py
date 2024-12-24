@@ -1,4 +1,5 @@
 from bitstring import Bits, pack
+from dataclasses import dataclass
 from logging import getLogger
 from typing import Self
 
@@ -7,6 +8,7 @@ from .crc_16_darc import crc_16_darc
 from .l3_data import L3DataPacketServiceIdentificationCode
 
 
+@dataclass
 class L4DataGroup1:
     """L4 Data Group Composition 1"""
 

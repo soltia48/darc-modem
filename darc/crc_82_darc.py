@@ -142,4 +142,4 @@ def correct_error_dscc_272_190(buffer: Bits) -> Bits | None:
         return buffer ^ error_vector
     except KeyError:
         __logger.warning("Error vector not found. Cannot correct error.")
-        return
+        return buffer
