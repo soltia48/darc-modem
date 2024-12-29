@@ -10,13 +10,13 @@
     "source=/dev/bus/usb/,target=/dev/bus/usb/,type=bind",
     "source=/run/udev/,target=/run/udev/,type=bind,consistency=readonly"
   ],
-  "runArgs": [
-    "--device-cgroup-rule=c *:* rw"
-  ],
+  "runArgs": ["--device-cgroup-rule=c *:* rw"],
   "onCreateCommand": ".devcontainer/on_create.sh",
   "customizations": {
     "vscode": {
       "extensions": [
+        "ms-azuretools.vscode-docker",
+        "esbenp.prettier-vscode",
         "ms-python.python",
         "ms-python.black-formatter",
         "njpwerner.autodocstring"
