@@ -1,12 +1,12 @@
 {
-  "name": "Dev Container",
+  "name": "darc-modem",
   "build": {
     "dockerfile": "Dockerfile"
   },
-  "workspaceFolder": "/root/workspace/",
-  "remoteUser": "root",
+  "workspaceFolder": "/workspace/",
+  "remoteUser": "ubuntu",
   "mounts": [
-    "source=${localWorkspaceFolder},target=/root/workspace/,type=bind,consistency=cached",
+    "source=${localWorkspaceFolder},target=/workspace/,type=bind,consistency=cached",
     "source=/dev/bus/usb/,target=/dev/bus/usb/,type=bind",
     "source=/run/udev/,target=/run/udev/,type=bind,consistency=readonly"
   ],

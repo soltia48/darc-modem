@@ -14,8 +14,10 @@ RUN --mount=type=cache,target=/var/lib/apt/,sharing=locked \
     # For run
     gnuradio soapysdr-module-all python3-soapysdr gr-osmosdr
 
+USER ubuntu
+
 # Install Poetry
 RUN curl -sSL https://install.python-poetry.org | python3 -
-ENV PATH /root/.local/bin:$PATH
+ENV PATH=/home/ubuntu/.local/bin:$PATH
 
-WORKDIR /root/workspace/
+WORKDIR /workspace/
