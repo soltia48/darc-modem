@@ -77,6 +77,7 @@ class darc_demod(gr.top_block, Qt.QWidget):
         self.wbfm_low_pass_filter_taps = wbfm_low_pass_filter_taps = firdes.low_pass(1.0, source_sampling_rate, wbfm_bandwidth,wbfm_bandwidth*0.5, window.WIN_BLACKMAN, 6.76)
         self.wbfm_deviation = wbfm_deviation = 75e3
         self.samples_per_symbol = samples_per_symbol = int(darc_sampling_rate/symbols_per_second)
+        self.gain = gain = 0.0e6
         self.frequency = frequency = 82.5e6
         self.darc_low_pass_filter_taps = darc_low_pass_filter_taps = firdes.low_pass(1.0, wbfm_sampling_rate, 8e3,4e3, window.WIN_HAMMING, 6.76)
 
@@ -84,20 +85,23 @@ class darc_demod(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
+        self._gain_range = qtgui.Range(0.0e6, 64.0e6, 0.1e6, 0.0e6, 200)
+        self._gain_win = qtgui.RangeWidget(self._gain_range, self.set_gain, "Gain", "counter_slider", float, QtCore.Qt.Horizontal)
+        self.top_layout.addWidget(self._gain_win)
         self._frequency_range = qtgui.Range(76.1e6, 94.9e6, 0.1e6, 82.5e6, 200)
         self._frequency_win = qtgui.RangeWidget(self._frequency_range, self.set_frequency, "Frequency", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._frequency_win)
         self.rtlsdr_source_0 = osmosdr.source(
-            args="numchan=" + str(1) + " " + "rtl_tcp=192.168.1.144:1234,bias=1"
+            args="numchan=" + str(1) + " " + "rtl_tcp=127.0.0.1:1234,bias=1"
         )
         self.rtlsdr_source_0.set_time_unknown_pps(osmosdr.time_spec_t())
         self.rtlsdr_source_0.set_sample_rate(source_sampling_rate)
         self.rtlsdr_source_0.set_center_freq((frequency-0.25e6), 0)
-        self.rtlsdr_source_0.set_freq_corr(0, 0)
+        self.rtlsdr_source_0.set_freq_corr((-5), 0)
         self.rtlsdr_source_0.set_dc_offset_mode(0, 0)
         self.rtlsdr_source_0.set_iq_balance_mode(0, 0)
         self.rtlsdr_source_0.set_gain_mode(False, 0)
-        self.rtlsdr_source_0.set_gain(14.4, 0)
+        self.rtlsdr_source_0.set_gain(gain, 0)
         self.rtlsdr_source_0.set_if_gain(0.0, 0)
         self.rtlsdr_source_0.set_bb_gain(0.0, 0)
         self.rtlsdr_source_0.set_antenna('', 0)
@@ -274,6 +278,13 @@ class darc_demod(gr.top_block, Qt.QWidget):
 
     def set_samples_per_symbol(self, samples_per_symbol):
         self.samples_per_symbol = samples_per_symbol
+
+    def get_gain(self):
+        return self.gain
+
+    def set_gain(self, gain):
+        self.gain = gain
+        self.rtlsdr_source_0.set_gain(self.gain, 0)
 
     def get_frequency(self):
         return self.frequency
