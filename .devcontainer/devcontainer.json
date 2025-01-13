@@ -10,7 +10,10 @@
     "source=/dev/bus/usb/,target=/dev/bus/usb/,type=bind",
     "source=/run/udev/,target=/run/udev/,type=bind,consistency=readonly"
   ],
-  "runArgs": ["--device-cgroup-rule=c *:* rw"],
+  "runArgs": [
+    "--device-cgroup-rule=c *:* rw",
+    "--add-host=host.docker.internal:host-gateway"
+  ],
   "onCreateCommand": ".devcontainer/on_create.sh",
   "customizations": {
     "vscode": {
