@@ -1,66 +1,139 @@
-from bitstring import Bits
+from collections.abc import Sequence, MutableMapping
+from dataclasses import dataclass
 from logging import getLogger
+from typing import TypeAlias
 
-from .l3_data import L3DataPacketServiceIdentificationCode, L3DataPacket
+from bitstring import Bits
+
+from .l3_data import L3DataPacketServiceIdentificationCode as ServiceID
+from .l3_data import L3DataPacket
 from .l4_data import L4DataGroup1, L4DataGroup2
+
+DataPacket: TypeAlias = L3DataPacket
+DataGroup: TypeAlias = L4DataGroup1 | L4DataGroup2
+GroupKey: TypeAlias = tuple[ServiceID, int]
+GroupBuffer: TypeAlias = MutableMapping[GroupKey, Bits]
+DataPackets: TypeAlias = Sequence[DataPacket]
+DataGroups: TypeAlias = list[DataGroup]
+
+
+@dataclass(frozen=True)
+class DecodingContext:
+    """Context for data group decoding."""
+
+    service_id: ServiceID
+    group_number: int
+    packet_number: int
+
+    def __str__(self) -> str:
+        return (
+            f"service_id={hex(self.service_id)}, "
+            f"group_number={hex(self.group_number)}, "
+            f"packet_number={hex(self.packet_number)}"
+        )
 
 
 class L4DataGroupDecoder:
-    """DARC L4 Data Group Decoder"""
+    """DARC Layer 4 Data Group Decoder.
 
-    __logger = getLogger(__name__)
+    Decodes L4 data groups by assembling fragments from L3 packets.
+    Handles both composition 1 and 2 formats.
+    """
 
     def __init__(self) -> None:
-        """Constructor"""
+        """Initialize a new data group decoder."""
+        self._logger = getLogger(__name__)
+        self._group_buffers: GroupBuffer = {}
 
-        self.__data_group_buffers: dict[tuple[int, int], Bits] = {}
-
-    def push_data_packets(
-        self, data_packets: list[L3DataPacket]
-    ) -> list[L4DataGroup1 | L4DataGroup2]:
-        """Push Data Packets
+    def _get_group_key(self, packet: DataPacket) -> GroupKey:
+        """Create a unique key for a data group.
 
         Args:
-            data_packets (list[L3DataPacket]): Data Packets
+            packet: L3 data packet
 
         Returns:
-            list[L4DataGroup1 | L4DataGroup2]: Data Groups
+            Tuple of service ID and group number
         """
+        return (packet.service_id, packet.data_group_number)
 
-        data_groups: list[L4DataGroup1 | L4DataGroup2] = []
+    def _log_missing_first_packet(self, context: DecodingContext) -> None:
+        """Log when first packet of a group is missing.
 
-        for data_packet in data_packets:
-            data_group_key = (data_packet.service_id, data_packet.data_group_number)
-            data_group_buffer = self.__data_group_buffers.get(data_group_key)
-            if data_group_buffer is None:
-                if data_packet.data_packet_number != 0:
-                    self.__logger.debug(
-                        f"First Data Packet not found. service_id={hex(data_packet.service_id)} data_group_number={hex(data_packet.data_group_number)} data_packet_number={hex(data_packet.data_packet_number)}"
+        Args:
+            context: Current decoding context
+        """
+        self._logger.debug("First Data Packet not found. %s", context)
+
+    def _create_data_group(self, packet: DataPacket, buffer: Bits) -> DataGroup:
+        """Create appropriate data group from buffer.
+
+        Args:
+            packet: L3 data packet containing group metadata
+            buffer: Accumulated data buffer
+
+        Returns:
+            Decoded L4 data group
+        """
+        if packet.service_id == ServiceID.ADDITIONAL_INFORMATION:
+            return L4DataGroup2.from_buffer(
+                packet.service_id, packet.data_group_number, buffer
+            )
+        return L4DataGroup1.from_buffer(
+            packet.service_id, packet.data_group_number, buffer
+        )
+
+    def push_data_packets(self, data_packets: DataPackets) -> DataGroups:
+        """Process L3 data packets and assemble L4 data groups.
+
+        Args:
+            data_packets: Sequence of L3 data packets
+
+        Returns:
+            List of assembled L4 data groups
+        """
+        data_groups: DataGroups = []
+
+        for packet in data_packets:
+            # Create group key and get existing buffer if any
+            group_key = self._get_group_key(packet)
+            group_buffer = self._group_buffers.get(group_key)
+
+            # Handle new group
+            if group_buffer is None:
+                if packet.data_packet_number != 0:
+                    context = DecodingContext(
+                        packet.service_id,
+                        packet.data_group_number,
+                        packet.data_packet_number,
                     )
+                    self._log_missing_first_packet(context)
                     continue
 
-                self.__data_group_buffers[data_group_key] = data_packet.data_block
+                self._group_buffers[group_key] = packet.data_block
             else:
-                self.__data_group_buffers[data_group_key] += data_packet.data_block
+                # Append to existing buffer
+                self._group_buffers[group_key] += packet.data_block
 
-            if data_packet.end_of_information_flag == 1:
-                data_group_buffer = self.__data_group_buffers.pop(data_group_key)
-                if (
-                    data_packet.service_id
-                    == L3DataPacketServiceIdentificationCode.ADDITIONAL_INFORMATION
-                ):
-                    data_group = L4DataGroup2.from_buffer(
-                        data_packet.service_id,
-                        data_packet.data_group_number,
-                        data_group_buffer,
-                    )
-                else:
-                    data_group = L4DataGroup1.from_buffer(
-                        data_packet.service_id,
-                        data_packet.data_group_number,
-                        data_group_buffer,
-                    )
+            # Check if group is complete
+            if packet.end_of_information_flag == 1:
+                # Get and remove buffer
+                final_buffer = self._group_buffers.pop(group_key)
 
-                data_groups.append(data_group)
+                # Create appropriate data group
+                try:
+                    data_group = self._create_data_group(packet, final_buffer)
+                    data_groups.append(data_group)
+                except Exception as e:
+                    self._logger.error(
+                        "Failed to create data group: %s. Key: %s", str(e), group_key
+                    )
 
         return data_groups
+
+    def get_buffer_count(self) -> int:
+        """Get number of incomplete group buffers.
+
+        Returns:
+            Count of incomplete groups
+        """
+        return len(self._group_buffers)

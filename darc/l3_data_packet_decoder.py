@@ -1,23 +1,27 @@
+from typing import TypeAlias
+from collections.abc import Sequence
+
 from .l2_data import L2Frame
 from .l3_data import L3DataPacket
 
+DataPackets: TypeAlias = Sequence[L3DataPacket]
+
 
 class L3DataPacketDecoder:
-    """L3 Data Packet Decoder"""
+    """Layer 3 Data Packet Decoder.
 
-    def push_frame(self, frame: L2Frame) -> list[L3DataPacket]:
-        """Push a Frame
+    Decodes Layer 3 data packets from Layer 2 frames in the DARC protocol.
+    """
+
+    def push_frame(self, frame: L2Frame) -> DataPackets:
+        """Process a Layer 2 frame and extract Layer 3 data packets.
+
+        Converts each information block in the frame to a Layer 3 data packet.
 
         Args:
-            frame (L2Frame): Frame
+            frame: Layer 2 frame containing data packets
 
         Returns:
-            list[L3DataPacket]: Data Packets
+            Sequence of decoded Layer 3 data packets
         """
-
-        return list(
-            map(
-                lambda x: L3DataPacket.from_buffer(x.data_packet),
-                frame.blocks,
-            )
-        )
+        return [L3DataPacket.from_buffer(block.data_packet) for block in frame.blocks]

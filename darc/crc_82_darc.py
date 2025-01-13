@@ -1,145 +1,171 @@
-from bitstring import Bits
 from logging import getLogger
+from typing import Final, TypeAlias
 
-__logger = getLogger(__name__)
+from bitstring import Bits
+
+CrcValue: TypeAlias = int
+BitCount: TypeAlias = int
+Syndrome: TypeAlias = int
+
+CRC_POLYNOMIAL: Final[int] = 0x0308C0111011401440411
+CRC_MASK: Final[int] = 0x3FFFFFFFFFFFFFFFFFFFF
+CRC_MSB: Final[int] = 0x200000000000000000000
+INITIAL_CRC: Final[int] = 0x000000000000000000000
+
+logger = getLogger(__name__)
 
 
-def __generate_crc_82_darc_table() -> list[int]:
-    """Generate CRC-82/DARC table
+def _generate_crc_82_darc_table() -> list[int]:
+    """Generate CRC-82/DARC lookup table.
 
     Returns:
-        list[int]: CRC-82/DARC table
+        list[int]: Pre-computed CRC-82/DARC table
     """
-
     table = [0] * 256
+
     for i in range(256):
         value = i << 74
         for _ in range(8):
             value = (
-                (value << 1) ^ 0x0308C0111011401440411
-                if (value & 0x200000000000000000000) != 0
-                else (value << 1)
+                ((value << 1) ^ CRC_POLYNOMIAL) if (value & CRC_MSB) else (value << 1)
             )
-        table[i] = value & 0x3FFFFFFFFFFFFFFFFFFFF
+        table[i] = value & CRC_MASK
+
     return table
 
 
-__crc_82_darc_table = __generate_crc_82_darc_table()
+# Pre-computed table as a module constant
+CRC_82_DARC_TABLE: Final[list[int]] = _generate_crc_82_darc_table()
 
 
-def __crc_82_darc_table_driven(message: bytes | Bits) -> int:
-    """Calculate CRC-82/DARC with table driven algorithm
-
-    Args:
-        message (bytes | Bits): Message
-
-    Returns:
-        int: CRC value
-    """
-
-    crc = 0x000000000000000000000
-    for value in message:
-        crc = __crc_82_darc_table[((crc >> 74) ^ value) & 0xFF] ^ (crc << 8)
-    return crc & 0x3FFFFFFFFFFFFFFFFFFFF
-
-
-def __crc_82_darc_bit_by_bit(message: bytes | Bits, bits: int) -> int:
-    """Calculate CRC-82/DARC with bit by bit aigorithm
+def _crc_82_darc_table_driven(message: bytes | Bits) -> CrcValue:
+    """Calculate CRC-82/DARC using table-driven algorithm.
 
     Args:
-        message (bytes | Bits): Message
-        bits (int): Number of bit in message
+        message: Input message as bytes or Bits
 
     Returns:
-        int: CRC value
+        Calculated CRC value
     """
+    crc = INITIAL_CRC
 
-    crc = 0x000000000000000000000
-    for value in message:
+    # Convert Bits to bytes if necessary
+    data = message.bytes if isinstance(message, Bits) else message
+
+    for value in data:
+        table_index = ((crc >> 74) ^ value) & 0xFF
+        crc = CRC_82_DARC_TABLE[table_index] ^ (crc << 8)
+        crc &= CRC_MASK
+
+    return crc
+
+
+def _crc_82_darc_bit_by_bit(message: bytes | Bits, bits: BitCount) -> CrcValue:
+    """Calculate CRC-82/DARC using bit-by-bit algorithm.
+
+    Args:
+        message: Input message
+        bits: Number of bits to process
+
+    Returns:
+        Calculated CRC value
+    """
+    crc = INITIAL_CRC
+    data = message.bytes if isinstance(message, Bits) else message
+
+    for value in data:
         for i in range(8):
             if bits <= 0:
                 break
 
-            bit = (crc & 0x200000000000000000000) ^ (
-                0x200000000000000000000 if value & (0x80 >> i) != 0 else 0
-            )
-            crc <<= 1
-            if bit != 0:
-                crc ^= 0x0308C0111011401440411
-
+            bit = (crc & CRC_MSB) ^ (CRC_MSB if value & (0x80 >> i) else 0)
+            crc = ((crc << 1) ^ CRC_POLYNOMIAL if bit else (crc << 1)) & CRC_MASK
             bits -= 1
-        crc &= 0x3FFFFFFFFFFFFFFFFFFFF
-    return crc & 0x3FFFFFFFFFFFFFFFFFFFF
+
+    return crc
 
 
-def crc_82_darc(message: bytes | Bits, bits: int | None = None) -> int:
-    """Calculate CRC-82/DARC
-
-    Args:
-        message (bytes | Bits): Message
-        bits (int | None, optional): Number of bit in message. Defaults to None.
-
-    Returns:
-        int: CRC value
-    """
-    if bits is None:
-        bits = 8 * len(message)
-
-    if bits % 8 == 0:
-        return __crc_82_darc_table_driven(message)
-    else:
-        return __crc_82_darc_bit_by_bit(message, bits)
-
-
-def __generate_bitflip_syndrome_map(length: int, error_width: int) -> dict[int, Bits]:
-    """Generate bitflip syndrome map
+def crc_82_darc(message: bytes | Bits, *, bits: BitCount | None = None) -> CrcValue:
+    """Calculate CRC-82/DARC.
 
     Args:
-        length (int): Length
-        error_width (int): Error width
+        message: Input message
+        bits: Optional bit count (if None, assumes full bytes)
 
     Returns:
-        dict[int, Bits]: Bitflip syndrome map
+        Calculated CRC value
     """
-    bitflip_syndrome_map: dict[int, Bits] = dict()
+    actual_bits = bits if bits is not None else 8 * len(message)
+    return (
+        _crc_82_darc_table_driven(message)
+        if actual_bits % 8 == 0
+        else _crc_82_darc_bit_by_bit(message, actual_bits)
+    )
+
+
+def _generate_bitflip_syndrome_map(
+    length: int, error_width: int
+) -> dict[Syndrome, Bits]:
+    """Generate bitflip syndrome map.
+
+    Args:
+        length: Length of the code
+        error_width: Maximum error width to handle
+
+    Returns:
+        Dictionary mapping syndromes to error vectors
+    """
+    bitflip_syndrome_map: dict[Syndrome, Bits] = {}
+
     for i in range(1, error_width + 1):
-        error_base = 1 << (i - 1) | 1
-        counter_max = 2 ** (i - 2) if 2 < i else 1
+        error_base = (1 << (i - 1)) | 1
+        counter_max = 2 ** (i - 2) if i > 2 else 1
+
         for j in range(counter_max):
-            error_with_counter = error_base | j << 1
+            error_with_counter = error_base | (j << 1)
+
             for k in range(length - i):
                 error = error_with_counter << k
                 error_vector = Bits(uint=error, length=length)
-                bitflip_syndrome_map[crc_82_darc(error_vector, length)] = error_vector
+                syndrome = crc_82_darc(error_vector, bits=length)
+                bitflip_syndrome_map[syndrome] = error_vector
+
     return bitflip_syndrome_map
 
 
-__parity_bitflip_syndrome_map_dscc_272_190 = __generate_bitflip_syndrome_map(272, 8)
+# Pre-computed syndrome map for DSCC (272,190)
+PARITY_BITFLIP_SYNDROME_MAP_DSCC_272_190: Final[dict[Syndrome, Bits]] = (
+    _generate_bitflip_syndrome_map(272, 8)
+)
 
 
 def correct_error_dscc_272_190(buffer: Bits) -> Bits | None:
-    """Correct error with Difference Set Cyclic Codes (272,190)
+    """Correct error with Difference Set Cyclic Codes (272,190).
 
     Args:
-        buffer (Bits): Buffer
+        buffer: Input buffer to correct
 
     Returns:
-        Bits | None: Bits if data corrected, else None
+        Corrected buffer if successful, None if correction failed
+
+    Raises:
+        ValueError: If buffer length is not 272 bits
     """
     if len(buffer) != 272:
-        raise ValueError("buffer length must be 272.")
+        raise ValueError("Buffer length must be 272 bits")
 
-    syndrome = crc_82_darc(buffer)
+    syndrome = crc_82_darc(buffer, bits=272)
     if syndrome == 0:
         return buffer
 
-    __logger.debug(
-        f"Syndrome is not zero. Try correct error with parity. syndrome={hex(syndrome)}"
+    logger.debug(
+        "Non-zero syndrome detected: %s. Attempting error correction.", hex(syndrome)
     )
+
     try:
-        error_vector = __parity_bitflip_syndrome_map_dscc_272_190[syndrome]
-        __logger.debug(f"Error vector found. error_vector={error_vector.bytes.hex()}")
+        error_vector = PARITY_BITFLIP_SYNDROME_MAP_DSCC_272_190[syndrome]
+        logger.debug("Error vector found: %s", error_vector.bytes.hex())
         return buffer ^ error_vector
     except KeyError:
-        __logger.warning("Error vector not found. Cannot correct error.")
+        logger.warning("Error vector not found. Cannot correct error.")
         return buffer

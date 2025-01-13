@@ -1,13 +1,30 @@
-from bitstring import Bits, pack
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Self
+from typing import Self, Final, TypeAlias
+
+from bitstring import Bits, pack
 
 from .crc_14_darc import crc_14_darc
 from .crc_82_darc import correct_error_dscc_272_190
 
+Buffer: TypeAlias = Bits
+BlockBuffer: TypeAlias = Sequence[Buffer]
+Block: TypeAlias = "L2InformationBlock | L2ParityBlock"
+
+PACKET_SIZE: Final[int] = 176
+CRC_SIZE: Final[int] = 14
+BLOCK_SIZE: Final[int] = 190
+FRAME_SIZE: Final[int] = 272
+PARITY_SIZE: Final[int] = BLOCK_SIZE
+
 
 class L2BlockIdentificationCode(IntEnum):
+    """Layer 2 Block Identification Codes.
+
+    These codes are used to identify different types of blocks in the L2 frame.
+    """
+
     UNDEFINED = 0x0000
     BIC_1 = 0x135E
     BIC_2 = 0x74A6
@@ -15,177 +32,198 @@ class L2BlockIdentificationCode(IntEnum):
     BIC_4 = 0xC875
 
 
-@dataclass
+@dataclass(frozen=True)
 class L2InformationBlock:
-    """L2 Information Block"""
+    """Layer 2 Information Block.
+
+    Contains data packet and error detection information.
+
+    Attributes:
+        block_id: Block identification code
+        data_packet: Actual data payload
+        crc: Cyclic redundancy check value
+    """
 
     block_id: L2BlockIdentificationCode
-    data_packet: Bits
+    data_packet: Buffer
     crc: int
 
+    def __post_init__(self) -> None:
+        """Validate block after initialization."""
+        if len(self.data_packet) != PACKET_SIZE:
+            raise ValueError(f"Data packet must be {PACKET_SIZE} bits")
+        if not 0 <= self.crc < (1 << CRC_SIZE):
+            raise ValueError(f"CRC must be a {CRC_SIZE}-bit value")
+
     def is_crc_valid(self) -> bool:
-        """Is CRC valid
+        """Check if the CRC is valid for this block.
 
         Returns:
-            bool: True if CRC is valid, else False
+            True if CRC matches calculated value
         """
-
         return crc_14_darc(self.data_packet.bytes) == self.crc
 
-    def to_buffer(self) -> Bits:
-        """To buffer
+    def to_buffer(self) -> Buffer:
+        """Convert block to buffer format.
 
         Returns:
-            Bits: Buffer
+            Binary buffer containing packed block data
         """
-
         return pack("bits176, uint14", self.data_packet, self.crc)
 
     @classmethod
-    def from_buffer(cls, block_id: L2BlockIdentificationCode, buffer: Bits) -> Self:
-        """Construct from buffer
+    def from_buffer(cls, block_id: L2BlockIdentificationCode, buffer: Buffer) -> Self:
+        """Create block from binary buffer.
 
         Args:
-            block_id (L2BlockIdentificationCode): Block ID
-            buffer (Bits): Buffer
+            block_id: Block identification code
+            buffer: Binary data buffer
+
+        Returns:
+            New information block instance
 
         Raises:
-            ValueError: Invalid buffer length
-
-        Returns:
-            Self: L2InformationBlock instance
+            ValueError: If buffer length is invalid
         """
+        if len(buffer) not in (BLOCK_SIZE, FRAME_SIZE):
+            raise ValueError(f"Buffer length must be {BLOCK_SIZE} or {FRAME_SIZE}")
 
-        if len(buffer) != 190 and len(buffer) != 272:
-            raise ValueError("buffer length must be 190 or 272.")
+        # Attempt error correction if needed
+        if len(buffer) == FRAME_SIZE:
+            corrected = correct_error_dscc_272_190(buffer)
+            if corrected is not None:
+                buffer = corrected
 
-        if len(buffer) == 272:
-            # Correct error
-            error_corrected_blocks = correct_error_dscc_272_190(buffer)
-            if error_corrected_blocks is not None:
-                buffer = error_corrected_blocks
-
-        data_packet = buffer[0:176]
-        crc = buffer[176:190].uint
-
-        return cls(block_id, data_packet, crc)
+        return cls(
+            block_id=block_id,
+            data_packet=buffer[0:PACKET_SIZE],
+            crc=buffer[PACKET_SIZE:BLOCK_SIZE].uint,
+        )
 
 
-@dataclass
+@dataclass(frozen=True)
 class L2ParityBlock:
-    """L2 Parity Block"""
+    """Layer 2 Parity Block.
+
+    Contains vertical parity information for error correction.
+
+    Attributes:
+        block_id: Block identification code
+        vertical_parity: Vertical parity bits
+    """
 
     block_id: L2BlockIdentificationCode
-    vertical_parity: Bits
+    vertical_parity: Buffer
 
-    def to_buffer(self) -> Bits:
-        """To buffer
+    def __post_init__(self) -> None:
+        """Validate block after initialization."""
+        if len(self.vertical_parity) != PARITY_SIZE:
+            raise ValueError(f"Vertical parity must be {PARITY_SIZE} bits")
+
+    def to_buffer(self) -> Buffer:
+        """Convert block to buffer format.
 
         Returns:
-            Bits: Buffer
+            Binary buffer containing parity data
         """
-
         return self.vertical_parity
 
     @classmethod
-    def from_buffer(cls, block_id: L2BlockIdentificationCode, buffer: Bits) -> Self:
-        """Construct from buffer
+    def from_buffer(cls, block_id: L2BlockIdentificationCode, buffer: Buffer) -> Self:
+        """Create block from binary buffer.
 
         Args:
-            block_id (L2BlockIdentificationCode): Block ID
-            buffer (Bits): Buffer
-
-        Raises:
-            ValueError: Invalid buffer length
+            block_id: Block identification code
+            buffer: Binary data buffer
 
         Returns:
-            Self: L2ParityBlock instance
+            New parity block instance
+
+        Raises:
+            ValueError: If buffer length is invalid
         """
+        if len(buffer) not in (BLOCK_SIZE, FRAME_SIZE):
+            raise ValueError(f"Buffer length must be {BLOCK_SIZE} or {FRAME_SIZE}")
 
-        if len(buffer) != 190 and len(buffer) != 272:
-            raise ValueError("buffer length must be 190 or 272.")
+        # Attempt error correction if needed
+        if len(buffer) == FRAME_SIZE:
+            corrected = correct_error_dscc_272_190(buffer)
+            if corrected is not None:
+                buffer = corrected
 
-        if len(buffer) == 272:
-            # Correct error
-            error_corrected_blocks = correct_error_dscc_272_190(buffer)
-            if error_corrected_blocks is not None:
-                buffer = error_corrected_blocks
-
-        vertical_parity = buffer[0:190]
-
-        return cls(block_id, vertical_parity)
+        return cls(block_id, buffer[0:PARITY_SIZE])
 
 
 @dataclass
 class L2Frame:
-    """L2 Frame"""
+    """Layer 2 Frame.
 
-    blocks: list[L2InformationBlock]
+    Contains multiple information blocks with error correction capability.
+
+    Attributes:
+        blocks: List of information blocks in the frame
+    """
+
+    blocks: list[L2InformationBlock] = field(default_factory=list)
 
     @staticmethod
-    def __correct_error_dscc_272_190(buffer: Bits) -> Bits:
-        """Correct error with Difference Set Cyclic Codes (272,190)
+    def _correct_error_dscc_272_190(buffer: Buffer) -> Buffer:
+        """Apply error correction to buffer.
 
         Args:
-            buffer (Bits): Buffer
+            buffer: Input buffer
 
         Returns:
-            Bits: Error corrected buffer. However, return original If cannot correct error
+            Corrected buffer or original if correction fails
         """
-
-        error_corrected_buffer = correct_error_dscc_272_190(buffer)
-        if error_corrected_buffer is not None:
-            buffer = error_corrected_buffer
-        return buffer
+        corrected = correct_error_dscc_272_190(buffer)
+        return corrected if corrected is not None else buffer
 
     @classmethod
-    def from_block_buffer(
-        cls,
-        block_buffer: list[L2InformationBlock | L2ParityBlock],
-    ) -> Self:
-        """Construct from Block buffer
+    def from_block_buffer(cls, block_buffer: Sequence[Block]) -> Self:
+        """Create frame from sequence of blocks.
 
         Args:
-            block_buffer (list[L2InformationBlock  |  L2ParityBlock]): Block buffer
-
-        Raises:
-            ValueError: Invalid block_buffer length
+            block_buffer: Sequence of information and parity blocks
 
         Returns:
-            Self: L2Frame instance
+            New frame instance
+
+        Raises:
+            ValueError: If buffer length is invalid
         """
+        if len(block_buffer) != FRAME_SIZE:
+            raise ValueError(f"Block buffer length must be {FRAME_SIZE}")
 
-        if len(block_buffer) != 272:
-            raise ValueError("block_buffer length must be 272.")
+        # Extract blocks by type
+        info_blocks = [b for b in block_buffer if isinstance(b, L2InformationBlock)]
+        parity_blocks = [b for b in block_buffer if isinstance(b, L2ParityBlock)]
+        blocks = [*info_blocks, *parity_blocks]
 
-        # Copy information blocks
-        blocks = list(filter(lambda x: isinstance(x, L2InformationBlock), block_buffer))
-        # Copy parity blocks
-        blocks.extend(filter(lambda x: isinstance(x, L2ParityBlock), block_buffer))
+        # Convert to 2D buffer and apply error correction
+        buffers = [Bits(block.to_buffer()) for block in blocks]
+        rotated = list(zip(*buffers))[::-1]
+        corrected = map(cls._correct_error_dscc_272_190, map(Bits, rotated))
+        restored = list(zip(*list(corrected)[::-1]))
 
-        # Create blocks 2D buffer
-        blocks_2d_buffer = list(map(lambda x: Bits(x.to_buffer()), blocks))
-        # Rotate left
-        left_rotated_blocks_2d_buffer: list[Bits] = map(
-            lambda x: Bits(x), list(zip(*blocks_2d_buffer))[::-1]
-        )
-        # Correct error with vertical parity
-        left_rotated_blocks_2d_buffer = map(
-            L2Frame.__correct_error_dscc_272_190, left_rotated_blocks_2d_buffer
-        )
-        # Rotate right
-        blocks_2d_buffer = list(
-            map(
-                lambda x: Bits(x),
-                zip(*list(left_rotated_blocks_2d_buffer)[::-1]),
-            )
+        # Create corrected information blocks
+        return cls(
+            [
+                L2InformationBlock.from_buffer(blocks[i].block_id, Bits(restored[i]))
+                for i in range(BLOCK_SIZE)
+            ]
         )
 
-        # Create Information Blocks from error corrected buffers
-        error_corrected_blocks: list[L2InformationBlock] = []
-        for i in range(190):
-            error_corrected_blocks.append(
-                L2InformationBlock.from_buffer(blocks[i].block_id, blocks_2d_buffer[i])
-            )
 
-        return L2Frame(error_corrected_blocks)
+def __debug_check_types() -> None:
+    """Verify type hints during development."""
+    from typing import assert_type
+
+    # Check block types
+    block = L2InformationBlock(L2BlockIdentificationCode.BIC_1, Bits(length=176), 0)
+    assert_type(block.is_crc_valid(), bool)
+    assert_type(block.to_buffer(), Bits)
+
+    # Check frame types
+    frame = L2Frame([block])
+    assert_type(frame.blocks, list[L2InformationBlock])

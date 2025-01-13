@@ -72,12 +72,12 @@ class darc_demod(gr.top_block, Qt.QWidget):
         self.wbfm_sampling_rate = wbfm_sampling_rate = 512e3
         self.wbfm_bandwidth = wbfm_bandwidth = 125e3
         self.symbols_per_second = symbols_per_second = 16e3
-        self.source_sampling_rate = source_sampling_rate = int(2.048e6)
+        self.source_sampling_rate = source_sampling_rate = int(1.024e6)
         self.darc_sampling_rate = darc_sampling_rate = 512e3
         self.wbfm_low_pass_filter_taps = wbfm_low_pass_filter_taps = firdes.low_pass(1.0, source_sampling_rate, wbfm_bandwidth,wbfm_bandwidth*0.5, window.WIN_BLACKMAN, 6.76)
         self.wbfm_deviation = wbfm_deviation = 75e3
         self.samples_per_symbol = samples_per_symbol = int(darc_sampling_rate/symbols_per_second)
-        self.gain = gain = 0.0e6
+        self.gain = gain = 32.0
         self.frequency = frequency = 82.5e6
         self.darc_low_pass_filter_taps = darc_low_pass_filter_taps = firdes.low_pass(1.0, wbfm_sampling_rate, 8e3,4e3, window.WIN_HAMMING, 6.76)
 
@@ -85,7 +85,7 @@ class darc_demod(gr.top_block, Qt.QWidget):
         # Blocks
         ##################################################
 
-        self._gain_range = qtgui.Range(0.0e6, 64.0e6, 0.1e6, 0.0e6, 200)
+        self._gain_range = qtgui.Range(0.0, 64.0, 0.1, 32.0, 200)
         self._gain_win = qtgui.RangeWidget(self._gain_range, self.set_gain, "Gain", "counter_slider", float, QtCore.Qt.Horizontal)
         self.top_layout.addWidget(self._gain_win)
         self._frequency_range = qtgui.Range(76.1e6, 94.9e6, 0.1e6, 82.5e6, 200)
@@ -100,7 +100,7 @@ class darc_demod(gr.top_block, Qt.QWidget):
         self.rtlsdr_source_0.set_freq_corr((-5), 0)
         self.rtlsdr_source_0.set_dc_offset_mode(0, 0)
         self.rtlsdr_source_0.set_iq_balance_mode(0, 0)
-        self.rtlsdr_source_0.set_gain_mode(False, 0)
+        self.rtlsdr_source_0.set_gain_mode(True, 0)
         self.rtlsdr_source_0.set_gain(gain, 0)
         self.rtlsdr_source_0.set_if_gain(0.0, 0)
         self.rtlsdr_source_0.set_bb_gain(0.0, 0)
