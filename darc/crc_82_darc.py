@@ -139,7 +139,7 @@ PARITY_BITFLIP_SYNDROME_MAP_DSCC_272_190: Final[dict[Syndrome, Bits]] = (
 )
 
 
-def correct_error_dscc_272_190(buffer: Bits) -> Bits | None:
+def correct_error_dscc_272_190(buffer: Bits, raise_error=True) -> Bits | None:
     """Correct error with Difference Set Cyclic Codes (272,190).
 
     Args:
@@ -167,5 +167,9 @@ def correct_error_dscc_272_190(buffer: Bits) -> Bits | None:
         logger.debug("Error vector found: %s", error_vector.bytes.hex())
         return buffer ^ error_vector
     except KeyError:
-        logger.warning("Error vector not found. Cannot correct error.")
-        return buffer
+        message = "Error vector not found. Cannot correct error."
+        if raise_error:
+            raise ValueError(message)
+        else:
+            logger.warning("Error vector not found. Cannot correct error.")
+        return None

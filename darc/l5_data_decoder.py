@@ -10,9 +10,6 @@ class L5DataDecoder:
 
     __logger = getLogger(__name__)
 
-    # def __init__(self) -> None:
-    #     """Constructor"""
-
     def push_data_groups(
         self, data_groups: list[L4DataGroup1 | L4DataGroup2]
     ) -> list[tuple]:

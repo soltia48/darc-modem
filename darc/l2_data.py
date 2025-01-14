@@ -90,7 +90,7 @@ class L2InformationBlock:
 
         # Attempt error correction if needed
         if len(buffer) == FRAME_SIZE:
-            corrected = correct_error_dscc_272_190(buffer)
+            corrected = correct_error_dscc_272_190(buffer, raise_error=False)
             if corrected is not None:
                 buffer = corrected
 
@@ -147,7 +147,7 @@ class L2ParityBlock:
 
         # Attempt error correction if needed
         if len(buffer) == FRAME_SIZE:
-            corrected = correct_error_dscc_272_190(buffer)
+            corrected = correct_error_dscc_272_190(buffer, raise_error=False)
             if corrected is not None:
                 buffer = corrected
 
@@ -166,18 +166,18 @@ class L2Frame:
 
     blocks: list[L2InformationBlock] = field(default_factory=list)
 
-    @staticmethod
-    def _correct_error_dscc_272_190(buffer: Buffer) -> Buffer:
-        """Apply error correction to buffer.
+    # @staticmethod
+    # def _correct_error_dscc_272_190(buffer: Buffer) -> Buffer:
+    #     """Apply error correction to buffer.
 
-        Args:
-            buffer: Input buffer
+    #     Args:
+    #         buffer: Input buffer
 
-        Returns:
-            Corrected buffer or original if correction fails
-        """
-        corrected = correct_error_dscc_272_190(buffer)
-        return corrected if corrected is not None else buffer
+    #     Returns:
+    #         Corrected buffer or original if correction fails
+    #     """
+    #     corrected = correct_error_dscc_272_190(buffer)
+    #     return corrected if corrected is not None else buffer
 
     @classmethod
     def from_block_buffer(cls, block_buffer: Sequence[Block]) -> Self:
@@ -203,7 +203,7 @@ class L2Frame:
         # Convert to 2D buffer and apply error correction
         buffers = [Bits(block.to_buffer()) for block in blocks]
         rotated = list(zip(*buffers))[::-1]
-        corrected = map(cls._correct_error_dscc_272_190, map(Bits, rotated))
+        corrected = map(correct_error_dscc_272_190, map(Bits, rotated))
         restored = list(zip(*list(corrected)[::-1]))
 
         # Create corrected information blocks
@@ -213,17 +213,3 @@ class L2Frame:
                 for i in range(BLOCK_SIZE)
             ]
         )
-
-
-def __debug_check_types() -> None:
-    """Verify type hints during development."""
-    from typing import assert_type
-
-    # Check block types
-    block = L2InformationBlock(L2BlockIdentificationCode.BIC_1, Bits(length=176), 0)
-    assert_type(block.is_crc_valid(), bool)
-    assert_type(block.to_buffer(), Bits)
-
-    # Check frame types
-    frame = L2Frame([block])
-    assert_type(frame.blocks, list[L2InformationBlock])
