@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC, abstractmethod, abstractclassmethod
 from dataclasses import dataclass
 from enum import IntEnum
 from logging import getLogger
@@ -25,13 +25,13 @@ class DataHeaderBase:
         buffer = stream.peek("bytes2")
         return buffer[1]
 
-    @abstractmethod
     @classmethod
+    @abstractmethod
     def data_header_parameter(cls) -> int:
         pass
 
-    @abstractmethod
     @classmethod
+    @abstractmethod
     def read(cls, stream: BitStream) -> Self:
         pass
 
@@ -327,7 +327,7 @@ class PageDataHeaderB(DataHeaderBase):
 
     @classmethod
     def data_header_parameter(cls):
-        return 0x32
+        return 0x33
 
     @classmethod
     def read(cls, stream: BitStream) -> Self:
@@ -502,13 +502,29 @@ class GenericDataUnit:
 
         data_unit_parameter: int = stream.read("uint8")
         data_unit_size_high: int = stream.read("uint7")
-        data_unik_link_flag: int = stream.read("uint1")
+        data_unit_link_flag: int = stream.read("uint1")
         data_unit_size_low: int = stream.read("uint8")
         data_unit_size = data_unit_size_high << 8 | data_unit_size_low
         data = stream.read(8 * data_unit_size).bytes
 
         return cls(
             data_unit_parameter=data_unit_parameter,
-            data_unik_link_flag=data_unik_link_flag,
+            data_unit_link_flag=data_unit_link_flag,
             data=data,
         )
+
+
+def read_data_header(stream: BitStream):
+    data_header_parameter = DataHeaderBase.peek_data_header_parameter(stream)
+    for data_header_cls in (
+        ProgramDataHeaderA,
+        ProgramDataHeaderB,
+        PageDataHeaderA,
+        PageDataHeaderB,
+        ContinueDataHeader,
+        ProgramIndexDataHeader,
+    ):
+        if data_header_cls.data_header_parameter() == data_header_parameter:
+            return data_header_cls.read(stream)
+
+    return None

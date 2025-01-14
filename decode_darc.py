@@ -12,6 +12,7 @@ from darc.l2_frame_decoder import L2FrameDecoder
 from darc.l3_data_packet_decoder import L3DataPacketDecoder
 from darc.l4_data import L4DataGroup1, L4DataGroup2
 from darc.l4_data_group_decoder import L4DataGroupDecoder
+from darc.l5_data_decoder import L5DataDecoder
 
 # Type aliases
 DataGroup: TypeAlias = L4DataGroup1 | L4DataGroup2
@@ -35,6 +36,7 @@ class DecoderPipeline:
     l2_frame_decoder: L2FrameDecoder
     l3_packet_decoder: L3DataPacketDecoder
     l4_group_decoder: L4DataGroupDecoder
+    l5_data_decoder: L5DataDecoder
 
     @classmethod
     def create(cls) -> "DecoderPipeline":
@@ -44,6 +46,7 @@ class DecoderPipeline:
             L2FrameDecoder(),
             L3DataPacketDecoder(),
             L4DataGroupDecoder(),
+            L5DataDecoder()
         )
 
 
@@ -166,10 +169,15 @@ def process_stdin(pipeline: DecoderPipeline) -> NoReturn:
                     data_groups = pipeline.l4_group_decoder.push_data_packets(
                         data_packets
                     )
+                    data = pipeline.l5_data_decoder.push_data_groups(data_groups)
+                    # print(data)
+                    for data_ in data:
+                        for data_unit in data_[1]:
+                            print(data_unit.data.hex(" ").upper())
 
                     # Output decoded data groups
-                    for group in data_groups:
-                        print(format_datagroup_output(group))
+                    # for group in data_groups:
+                        # print(format_datagroup_output(group))
 
         except (KeyboardInterrupt, EOFError):
             sys.exit(0)

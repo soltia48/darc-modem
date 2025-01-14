@@ -1,7 +1,8 @@
-from bitstring import Bits
+from bitstring import BitStream, ReadError
 from logging import getLogger
 
 from .l4_data import L4DataGroup1, L4DataGroup2
+from .l5_data import read_data_header, GenericDataUnit
 
 
 class L5DataDecoder:
@@ -14,7 +15,7 @@ class L5DataDecoder:
 
     def push_data_groups(
         self, data_groups: list[L4DataGroup1 | L4DataGroup2]
-    ) -> list:
+    ) -> list[tuple]:
         """Push Data Packets
 
         Args:
@@ -24,6 +25,21 @@ class L5DataDecoder:
             list[L5Data]: List of Data
         """
 
-        data: list = []
+        data: list[tuple] = []
+
+        for data_group in data_groups:
+            if isinstance(data_group, L4DataGroup2):
+                continue
+            stream = BitStream(data_group.data_group_data)
+            data_header = read_data_header(stream)
+            data_units = []
+            while True:
+                try:
+                    data_unit = GenericDataUnit.read(stream)
+                    data_units.append(data_unit)
+                except ReadError:
+                    break
+
+            data.append((data_header, data_units))
 
         return data
