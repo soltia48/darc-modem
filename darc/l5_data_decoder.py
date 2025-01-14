@@ -14,7 +14,7 @@ class L5DataDecoder:
 
     def push_data_groups(
         self, data_groups: list[L4DataGroup1 | L4DataGroup2]
-    ) -> list[L5Data]:
+    ) -> list:
         """Push Data Packets
 
         Args:
@@ -24,6 +24,6 @@ class L5DataDecoder:
             list[L5Data]: List of Data
         """
 
-        data: list[L5Data] = []
+        data: list = []
 
         return data

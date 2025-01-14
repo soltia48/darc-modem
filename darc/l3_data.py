@@ -6,9 +6,6 @@ from typing import Self, Final, TypeAlias
 from bitstring import Bits
 
 Buffer: TypeAlias = Bits | bytes
-ServiceID: TypeAlias = int
-GroupNumber: TypeAlias = int
-PacketNumber: TypeAlias = int
 
 PACKET_SIZE: Final[int] = 176
 SERVICE_ID_SIZE: Final[int] = 4

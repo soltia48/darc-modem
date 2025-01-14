@@ -9,8 +9,6 @@ from .crc_16_darc import crc_16_darc
 from .l3_data import L3DataPacketServiceIdentificationCode as ServiceID
 
 Buffer: TypeAlias = Bits
-ServiceIdentifier: TypeAlias = ServiceID
-GroupNumber: TypeAlias = int
 
 START_OF_HEADING: Final[int] = 0x01
 MIN_BUFFER_SIZE: Final[int] = 48
@@ -38,8 +36,8 @@ class L4DataGroup1:
 
     _logger: ClassVar = getLogger(__name__)
 
-    service_id: ServiceIdentifier
-    data_group_number: GroupNumber
+    service_id: ServiceID
+    data_group_number: int
     data_group_link: int
     data_group_data: Buffer
     end_of_data_group: int
@@ -95,8 +93,8 @@ class L4DataGroup1:
     @classmethod
     def from_buffer(
         cls,
-        service_id: ServiceIdentifier,
-        data_group_number: GroupNumber,
+        service_id: ServiceID,
+        data_group_number: int,
         buffer: Buffer,
     ) -> Self:
         """Create data group from binary buffer.
@@ -153,8 +151,8 @@ class L4DataGroup2:
         crc: Optional CRC value
     """
 
-    service_id: ServiceIdentifier
-    data_group_number: GroupNumber
+    service_id: ServiceID
+    data_group_number: int
     segments_data: Buffer
     crc: int | None = None
 
@@ -197,8 +195,8 @@ class L4DataGroup2:
     @classmethod
     def from_buffer(
         cls,
-        service_id: ServiceIdentifier,
-        data_group_number: GroupNumber,
+        service_id: ServiceID,
+        data_group_number: int,
         buffer: Buffer,
     ) -> Self:
         """Create data group from binary buffer.
