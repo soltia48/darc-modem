@@ -7,6 +7,8 @@ from typing import Final, TypeAlias, Sequence, NoReturn
 from pathlib import Path
 from dataclasses import dataclass
 
+
+from darc.dump_binary import dump_binary
 from darc.l2_block_decoder import L2BlockDecoder
 from darc.l2_frame_decoder import L2FrameDecoder
 from darc.l3_data_packet_decoder import L3DataPacketDecoder
@@ -46,7 +48,7 @@ class DecoderPipeline:
             L2FrameDecoder(),
             L3DataPacketDecoder(),
             L4DataGroupDecoder(),
-            L5DataDecoder()
+            L5DataDecoder(),
         )
 
 
@@ -172,12 +174,24 @@ def process_stdin(pipeline: DecoderPipeline) -> NoReturn:
                     data = pipeline.l5_data_decoder.push_data_groups(data_groups)
                     # print(data)
                     for data_ in data:
+                        print("=" * 64)
+                        print()
+                        print("Data Header :       ", data_[0])
+                        print()
                         for data_unit in data_[1]:
-                            print(data_unit.data.hex(" ").upper())
+                            print("-" * 32)
+                            print(
+                                "Data Unit Parameter:",
+                                format(data_unit.data_unit_parameter, "02X"),
+                            )
+                            print("Data Unit Data:")
+                            print(dump_binary(data_unit.data))
+                            print("-" * 32)
+                            print()
 
                     # Output decoded data groups
                     # for group in data_groups:
-                        # print(format_datagroup_output(group))
+                    # print(format_datagroup_output(group))
 
         except (KeyboardInterrupt, EOFError):
             sys.exit(0)

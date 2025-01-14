@@ -48,16 +48,16 @@ class ProgramDataHeaderA(DataHeaderBase):
     def to_buffer(self) -> Buffer:
         buffer = pack(
             f"""uint8, uint8,
-                uint8, uint6, uint2, uint8, uint4, uint4
+                uint8, uint2, uint6, uint8, uint4, uint4
             """,
             INFORMATION_SEPARATOR,
             self.data_header_parameter(),
             self.program_number,
-            self.total_pages,
             self.content_change,
+            self.total_pages,
             self.display_instruction,
-            self.display_format,
             self.information_type,
+            self.display_format,
         )
         return Buffer(buffer)
 
@@ -79,19 +79,19 @@ class ProgramDataHeaderA(DataHeaderBase):
             )
 
         program_number: int = stream.read("uint8")
-        total_pages: int = stream.read("uint6")
         content_change: int = stream.read("uint2")
+        total_pages: int = stream.read("uint6")
         display_instruction: int = stream.read("uint8")
-        display_format: int = stream.read("uint4")
         information_type: int = stream.read("uint4")
+        display_format: int = stream.read("uint4")
 
         return cls(
             program_number=program_number,
-            total_pages=total_pages,
             content_change=content_change,
+            total_pages=total_pages,
             display_instruction=display_instruction,
-            display_format=display_format,
             information_type=information_type,
+            display_format=display_format,
         )
 
 
@@ -113,25 +113,25 @@ class ProgramDataHeaderB(DataHeaderBase):
     def to_buffer(self) -> Buffer:
         buffer = pack(
             f"""uint8, uint8,
-                uint8, uint6, uint2, uint8, uint4, uint4,
-                uint6, uint2, uint4, uint4, uint8, uint8, uint4, uint4
+                uint8, uint2, uint6, uint8, uint4, uint4,
+                uint2, uint6, uint4, uint4, uint8, uint8, uint4, uint4
             """,
             INFORMATION_SEPARATOR,
             self.data_header_parameter(),
             self.program_number,
-            self.total_pages,
             self.content_update,
+            self.total_pages,
             self.display_instruction,
-            self.display_format,
             self.information_type,
-            self.prefecture_identifier,
+            self.display_format,
             self.undefined_0,
-            self.map_zoom,
+            self.prefecture_identifier,
             self.map_type,
+            self.map_zoom,
             self.map_position_x >> 4,
             self.map_position_y >> 4,
-            self.map_position_y & 0x0F,
             self.map_position_x & 0x0F,
+            self.map_position_y & 0x0F,
         )
         return Buffer(buffer)
 
@@ -153,33 +153,33 @@ class ProgramDataHeaderB(DataHeaderBase):
             )
 
         program_number: int = stream.read("uint8")
-        total_pages: int = stream.read("uint6")
         content_update: int = stream.read("uint2")
+        total_pages: int = stream.read("uint6")
         display_instruction: int = stream.read("uint8")
-        display_format: int = stream.read("uint4")
         information_type: int = stream.read("uint4")
-        prefecture_identifier: int = stream.read("uint6")
+        display_format: int = stream.read("uint4")
         undefined_0: int = stream.read("uint2")
-        map_zoom: int = stream.read("uint4")
+        prefecture_identifier: int = stream.read("uint6")
         map_type: int = stream.read("uint4")
+        map_zoom: int = stream.read("uint4")
         map_position_x_high: int = stream.read("uint8")
         map_position_y_high: int = stream.read("uint8")
-        map_position_y_low: int = stream.read("uint4")
         map_position_x_low: int = stream.read("uint4")
+        map_position_y_low: int = stream.read("uint4")
         map_position_x = map_position_x_high << 4 | map_position_x_low
         map_position_y = map_position_y_high << 4 | map_position_y_low
 
         return cls(
             program_number=program_number,
-            total_pages=total_pages,
             content_update=content_update,
+            total_pages=total_pages,
             display_instruction=display_instruction,
-            display_format=display_format,
             information_type=information_type,
-            prefecture_identifier=prefecture_identifier,
+            display_format=display_format,
             undefined_0=undefined_0,
-            map_zoom=map_zoom,
+            prefecture_identifier=prefecture_identifier,
             map_type=map_type,
+            map_zoom=map_zoom,
             map_position_x=map_position_x,
             map_position_y=map_position_y,
         )
@@ -204,19 +204,19 @@ class PageDataHeaderA(DataHeaderBase):
         """
         buffer = pack(
             f"""uint8, uint8,
-                uint8, uint6, uint2, uint8, uint4, uint4,
+                uint8, uint2, uint6, uint8, uint4, uint4,
                 uint4, uint4
             """,
             INFORMATION_SEPARATOR,
             self.data_header_parameter(),
             self.program_number,
-            self.total_pages,
             self.content_update,
+            self.total_pages,
             self.display_instruction,
-            self.display_format,
             self.information_type,
-            self.raster_color,
+            self.display_format,
             self.header_raster_color,
+            self.raster_color,
         )
         return Buffer(buffer)
 
@@ -238,23 +238,23 @@ class PageDataHeaderA(DataHeaderBase):
             )
 
         program_number: int = stream.read("uint8")
-        total_pages: int = stream.read("uint6")
         content_update: int = stream.read("uint2")
+        total_pages: int = stream.read("uint6")
         display_instruction: int = stream.read("uint8")
-        display_format: int = stream.read("uint4")
         information_type: int = stream.read("uint4")
-        raster_color: int = stream.read("uint4")
+        display_format: int = stream.read("uint4")
         header_raster_color: int = stream.read("uint4")
+        raster_color: int = stream.read("uint4")
 
         return cls(
             program_number=program_number,
-            total_pages=total_pages,
             content_update=content_update,
+            total_pages=total_pages,
             display_instruction=display_instruction,
-            display_format=display_format,
             information_type=information_type,
-            header_raster_color=header_raster_color,
+            display_format=display_format,
             raster_color=raster_color,
+            header_raster_color=header_raster_color,
         )
 
 
@@ -262,7 +262,7 @@ class PageDataHeaderA(DataHeaderBase):
 class PageDataHeaderB(DataHeaderBase):
     program_number: int
     content_update: int
-    total_pages: int
+    page_number: int
     display_instruction: int
     information_type: int
     display_format: int
@@ -290,37 +290,37 @@ class PageDataHeaderB(DataHeaderBase):
         """
         buffer = pack(
             f"""uint8, uint8,
-                uint8, uint6, uint2, uint8, uint4, uint4,
-                uint4, uint4, uint6, uint2, uint4, uint4, uint8, uint8, uint4, uint4,
-                uint6, uint2, uint4, uint4, uint8, uint8, uint4, uint4,
-                uint3, uint1, uint4, uint6, uint6, uint4, uint2, uint2, uint8
+                uint8, uint2, uint6, uint8, uint4, uint4,
+                uint4, uint4, uint2, uint6, uint4, uint4, uint8, uint8, uint4, uint4,
+                uint2, uint6, uint4, uint4, uint8, uint8, uint4, uint4,
+                uint4, uint1, uint3, uint2, uint6, uint2, uint2, uint4, uint8
             """,
             INFORMATION_SEPARATOR,
             self.data_header_parameter(),
             self.program_number,
-            self.total_pages,
             self.content_update,
+            self.page_number,
             self.display_instruction,
-            self.display_format,
             self.information_type,
-            self.raster_color,
+            self.display_format,
             self.header_raster_color,
-            self.prefecture_identifier,
+            self.raster_color,
             self.undefined_0,
-            self.map_zoom,
+            self.prefecture_identifier,
             self.map_type,
+            self.map_zoom,
             self.map_position_x >> 4,
             self.map_position_y >> 4,
-            self.map_position_y & 0x0F,
             self.map_position_x & 0x0F,
-            self.information_deliver_time_hour >> 3,
-            self.information_deliver_time_flag,
+            self.map_position_y & 0x0F,
             self.content_type,
-            self.information_deliver_time_minute,
+            self.information_deliver_time_flag,
+            self.information_deliver_time_hour >> 3,
             self.information_deliver_time_hour & 0x07,
-            self.reference_link_number >> 8,
-            self.link_type,
+            self.information_deliver_time_minute,
             self.link_layer,
+            self.link_type,
+            self.reference_link_number >> 8,
             self.reference_link_number & 0xFF,
         )
         return Buffer(buffer)
@@ -343,34 +343,34 @@ class PageDataHeaderB(DataHeaderBase):
             )
 
         program_number: int = stream.read("uint8")
-        total_pages: int = stream.read("uint6")
         content_update: int = stream.read("uint2")
+        page_number: int = stream.read("uint6")
         display_instruction: int = stream.read("uint8")
-        display_format: int = stream.read("uint4")
         information_type: int = stream.read("uint4")
-        raster_color: int = stream.read("uint4")
+        display_format: int = stream.read("uint4")
         header_raster_color: int = stream.read("uint4")
-        prefecture_identifier: int = stream.read("uint6")
+        raster_color: int = stream.read("uint4")
         undefined_0: int = stream.read("uint2")
-        map_zoom: int = stream.read("uint4")
+        prefecture_identifier: int = stream.read("uint6")
         map_type: int = stream.read("uint4")
+        map_zoom: int = stream.read("uint4")
         map_position_x_high: int = stream.read("uint8")
         map_position_y_high: int = stream.read("uint8")
-        map_position_y_low: int = stream.read("uint4")
         map_position_x_low: int = stream.read("uint4")
+        map_position_y_low: int = stream.read("uint4")
         map_position_x = map_position_x_high << 4 | map_position_x_low
         map_position_y = map_position_y_high << 4 | map_position_y_low
-        information_deliver_time_hour_high: int = stream.read("uint3")
-        information_deliver_time_flag: int = stream.read("uint1")
         content_type: int = stream.read("uint4")
-        information_deliver_time_minute: int = stream.read("uint6")
+        information_deliver_time_flag: int = stream.read("uint1")
+        information_deliver_time_hour_high: int = stream.read("uint3")
         information_deliver_time_hour_low: int = stream.read("uint2")
         information_deliver_time_hour = (
             information_deliver_time_hour_high << 2 | information_deliver_time_hour_low
         )
-        reference_link_number_high: int = stream.read("uint4")
-        link_type: int = stream.read("uint2")
+        information_deliver_time_minute: int = stream.read("uint6")
         link_layer: int = stream.read("uint2")
+        link_type: int = stream.read("uint2")
+        reference_link_number_high: int = stream.read("uint4")
         reference_link_number_low: int = stream.read("uint8")
         reference_link_number = (
             reference_link_number_high << 8 | reference_link_number_low
@@ -378,23 +378,209 @@ class PageDataHeaderB(DataHeaderBase):
 
         return cls(
             program_number=program_number,
-            total_pages=total_pages,
             content_update=content_update,
+            page_number=page_number,
+            display_instruction=display_instruction,
+            information_type=information_type,
+            display_format=display_format,
+            raster_color=raster_color,
+            header_raster_color=header_raster_color,
+            undefined_0=undefined_0,
+            prefecture_identifier=prefecture_identifier,
+            map_type=map_type,
+            map_zoom=map_zoom,
+            map_position_x=map_position_x,
+            map_position_y=map_position_y,
+            content_type=content_type,
+            information_deliver_time_flag=information_deliver_time_flag,
+            information_deliver_time_hour=information_deliver_time_hour,
+            information_deliver_time_minute=information_deliver_time_minute,
+            link_layer=link_layer,
+            link_type=link_type,
+            reference_link_number=reference_link_number,
+        )
+
+
+@dataclass
+class ProgramCommonMacroDataHeaderA(DataHeaderBase):
+    display_instruction: int
+    update: int
+    undefined_0: int
+    display_format: int
+    program_common_macro_set: int
+    program_common_macro_set_code: int
+
+    def to_buffer(self) -> Buffer:
+        """Convert data group to binary buffer.
+
+        Returns:
+            Binary buffer containing packed data group
+        """
+        buffer = pack(
+            f"""uint8, uint8,
+                uint8, uint1, uint3, uint4, uint8, uint8, uint8
+            """,
+            INFORMATION_SEPARATOR,
+            self.data_header_parameter(),
+            self.display_instruction,
+            self.update,
+            self.undefined_0,
+            self.display_format,
+            self.program_common_macro_set,
+            self.program_common_macro_set_code >> 8,
+            self.program_common_macro_set_code & 0xFF,
+        )
+        return Buffer(buffer)
+
+    @classmethod
+    def data_header_parameter(cls):
+        return 0x34
+
+    @classmethod
+    def read(cls, stream: BitStream) -> Self:
+        information_separator: int = stream.read("uint8")
+        if information_separator != INFORMATION_SEPARATOR:
+            cls._logger.warning(
+                "Invalid information separator: %s", hex(information_separator)
+            )
+        data_header_parameter: int = stream.read("uint8")
+        if data_header_parameter != cls.data_header_parameter():
+            cls._logger.warning(
+                "Invalid data header parameter: %s", hex(data_header_parameter)
+            )
+
+        display_instruction: int = stream.read("uint8")
+        update: int = stream.read("uint1")
+        undefined_0: int = stream.read("uint3")
+        display_format: int = stream.read("uint4")
+        program_common_macro_set: int = stream.read("uint8")
+        program_common_macro_set_code_high: int = stream.read("uint8")
+        program_common_macro_set_code_low: int = stream.read("uint8")
+        program_common_macro_set_code = (
+            program_common_macro_set_code_high << 8 | program_common_macro_set_code_low
+        )
+
+        return cls(
+            display_instruction=display_instruction,
+            update=update,
+            undefined_0=undefined_0,
+            display_format=display_format,
+            program_common_macro_set=program_common_macro_set,
+            program_common_macro_set_code=program_common_macro_set_code,
+        )
+
+
+@dataclass
+class ProgramCommonMacroDataHeaderB(DataHeaderBase):
+    display_instruction: int
+    update: int
+    undefined_0: int
+    display_format: int
+    program_common_macro_set: int
+    program_common_macro_set_code: int
+    undefined_1: int
+    prefecture_identifier: int
+    map_type: int
+    map_zoom: int
+    map_position_x: int
+    map_position_y: int
+    link_layer: int
+    link_type: int
+    reference_link_number: int
+
+    def to_buffer(self) -> Buffer:
+        """Convert data group to binary buffer.
+
+        Returns:
+            Binary buffer containing packed data group
+        """
+        buffer = pack(
+            f"""uint8, uint8,
+                uint8, uint1, uint3, uint4, uint8, uint8, uint8,
+                uint2, uint6, uint4, uint4, uint8, uint8, uint4, uint4, uint2, uint2, uint4, uint8
+            """,
+            INFORMATION_SEPARATOR,
+            self.data_header_parameter(),
+            self.display_instruction,
+            self.update,
+            self.undefined_0,
+            self.display_format,
+            self.program_common_macro_set,
+            self.program_common_macro_set_code >> 8,
+            self.program_common_macro_set_code & 0xFF,
+            self.undefined_1,
+            self.prefecture_identifier,
+            self.map_type,
+            self.map_zoom,
+            self.map_position_x >> 4,
+            self.map_position_y >> 4,
+            self.map_position_x & 0x0F,
+            self.map_position_y & 0x0F,
+            self.link_layer,
+            self.link_type,
+            self.reference_link_number >> 8,
+            self.reference_link_number & 0xFF,
+        )
+        return Buffer(buffer)
+
+    @classmethod
+    def data_header_parameter(cls):
+        return 0x35
+
+    @classmethod
+    def read(cls, stream: BitStream) -> Self:
+        information_separator: int = stream.read("uint8")
+        if information_separator != INFORMATION_SEPARATOR:
+            cls._logger.warning(
+                "Invalid information separator: %s", hex(information_separator)
+            )
+        data_header_parameter: int = stream.read("uint8")
+        if data_header_parameter != cls.data_header_parameter():
+            cls._logger.warning(
+                "Invalid data header parameter: %s", hex(data_header_parameter)
+            )
+
+        display_instruction: int = stream.read("uint8")
+        update: int = stream.read("uint1")
+        undefined_0: int = stream.read("uint3")
+        display_format: int = stream.read("uint4")
+        program_common_macro_set: int = stream.read("uint8")
+        program_common_macro_set_code_high: int = stream.read("uint8")
+        program_common_macro_set_code_low: int = stream.read("uint8")
+        program_common_macro_set_code = (
+            program_common_macro_set_code_high << 8 | program_common_macro_set_code_low
+        )
+        undefined_1: int = stream.read("uint2")
+        prefecture_identifier: int = stream.read("uint6")
+        map_type: int = stream.read("uint4")
+        map_zoom: int = stream.read("uint4")
+        map_position_x_high: int = stream.read("uint8")
+        map_position_y_high: int = stream.read("uint8")
+        map_position_x_low: int = stream.read("uint4")
+        map_position_y_low: int = stream.read("uint4")
+        map_position_x = map_position_x_high << 4 | map_position_x_low
+        map_position_y = map_position_y_high << 4 | map_position_y_low
+        link_layer: int = stream.read("uint2")
+        link_type: int = stream.read("uint2")
+        reference_link_number_high: int = stream.read("uint4")
+        reference_link_number_low: int = stream.read("uint8")
+        reference_link_number = (
+            reference_link_number_high << 8 | reference_link_number_low
+        )
+
+        return cls(
             display_instruction=display_instruction,
             display_format=display_format,
-            information_type=information_type,
-            header_raster_color=header_raster_color,
-            raster_color=raster_color,
-            prefecture_identifier=prefecture_identifier,
             undefined_0=undefined_0,
+            update=update,
+            program_common_macro_set=program_common_macro_set,
+            program_common_macro_set_code=program_common_macro_set_code,
+            prefecture_identifier=prefecture_identifier,
+            undefined_1=undefined_1,
             map_zoom=map_zoom,
             map_type=map_type,
             map_position_x=map_position_x,
             map_position_y=map_position_y,
-            information_deliver_time_hour=information_deliver_time_hour,
-            information_deliver_time_flag=information_deliver_time_flag,
-            content_type=content_type,
-            information_deliver_time_minute=information_deliver_time_minute,
             reference_link_number=reference_link_number,
             link_type=link_type,
             link_layer=link_layer,
@@ -440,12 +626,12 @@ class ProgramIndexDataHeader(DataHeaderBase):
     def to_buffer(self) -> Buffer:
         buffer = pack(
             f"""uint8, uint8,
-                uint2, uint6,
+                uint6, uint2,
             """,
             INFORMATION_SEPARATOR,
             self.data_header_parameter(),
-            self.index_control,
             self.undefined_0,
+            self.index_control,
         )
         return Buffer(buffer)
 
@@ -466,10 +652,28 @@ class ProgramIndexDataHeader(DataHeaderBase):
                 "Invalid data header parameter: %s", hex(data_header_parameter)
             )
 
-        index_control: int = stream.read("uint2")
         undefined_0: int = stream.read("uint6")
+        index_control: int = stream.read("uint2")
 
-        return cls(index_control=index_control, undefined_0=undefined_0)
+        return cls(undefined_0=undefined_0, index_control=index_control)
+
+
+def read_data_header(stream: BitStream):
+    data_header_parameter = DataHeaderBase.peek_data_header_parameter(stream)
+    for data_header_cls in (
+        ProgramDataHeaderA,
+        ProgramDataHeaderB,
+        PageDataHeaderA,
+        PageDataHeaderB,
+        ProgramCommonMacroDataHeaderA,
+        ProgramCommonMacroDataHeaderB,
+        ContinueDataHeader,
+        ProgramIndexDataHeader,
+    ):
+        if data_header_cls.data_header_parameter() == data_header_parameter:
+            return data_header_cls.read(stream)
+
+    return None
 
 
 @dataclass
@@ -482,11 +686,11 @@ class GenericDataUnit:
 
     def to_buffer(self) -> Buffer:
         buffer = pack(
-            f"uint8, uint8, uint7, uint1, uint8, bytes",
+            f"uint8, uint8, uint1, uint7, uint8, bytes",
             DATA_UNIT_SEPARATOR,
             self.data_unit_parameter,
-            len(self.data) >> 8,
             self.data_unit_link_flag,
+            len(self.data) >> 8,
             len(self.data) & 0xFF,
             self.data,
         )
@@ -501,8 +705,8 @@ class GenericDataUnit:
             )
 
         data_unit_parameter: int = stream.read("uint8")
-        data_unit_size_high: int = stream.read("uint7")
         data_unit_link_flag: int = stream.read("uint1")
+        data_unit_size_high: int = stream.read("uint7")
         data_unit_size_low: int = stream.read("uint8")
         data_unit_size = data_unit_size_high << 8 | data_unit_size_low
         data = stream.read(8 * data_unit_size).bytes
@@ -512,19 +716,3 @@ class GenericDataUnit:
             data_unit_link_flag=data_unit_link_flag,
             data=data,
         )
-
-
-def read_data_header(stream: BitStream):
-    data_header_parameter = DataHeaderBase.peek_data_header_parameter(stream)
-    for data_header_cls in (
-        ProgramDataHeaderA,
-        ProgramDataHeaderB,
-        PageDataHeaderA,
-        PageDataHeaderB,
-        ContinueDataHeader,
-        ProgramIndexDataHeader,
-    ):
-        if data_header_cls.data_header_parameter() == data_header_parameter:
-            return data_header_cls.read(stream)
-
-    return None
