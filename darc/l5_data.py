@@ -1,6 +1,5 @@
-from abc import ABC, abstractmethod, abstractclassmethod
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import IntEnum
 from logging import getLogger
 from typing import ClassVar, Final, Self, TypeAlias, Sequence
 
@@ -13,7 +12,7 @@ Buffer: TypeAlias = Bits
 
 
 @dataclass
-class DataHeaderBase:
+class DataHeaderBase(ABC):
     _logger: ClassVar = getLogger(__name__)
 
     @abstractmethod
@@ -69,12 +68,12 @@ class ProgramDataHeaderA(DataHeaderBase):
     def read(cls, stream: BitStream) -> Self:
         information_separator: int = stream.read("uint8")
         if information_separator != INFORMATION_SEPARATOR:
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid information separator: %s", hex(information_separator)
             )
         data_header_parameter: int = stream.read("uint8")
         if data_header_parameter != cls.data_header_parameter():
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid data header parameter: %s", hex(data_header_parameter)
             )
 
@@ -143,12 +142,12 @@ class ProgramDataHeaderB(DataHeaderBase):
     def read(cls, stream: BitStream) -> Self:
         information_separator: int = stream.read("uint8")
         if information_separator != INFORMATION_SEPARATOR:
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid information separator: %s", hex(information_separator)
             )
         data_header_parameter: int = stream.read("uint8")
         if data_header_parameter != cls.data_header_parameter():
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid data header parameter: %s", hex(data_header_parameter)
             )
 
@@ -228,12 +227,12 @@ class PageDataHeaderA(DataHeaderBase):
     def read(cls, stream: BitStream) -> Self:
         information_separator: int = stream.read("uint8")
         if information_separator != INFORMATION_SEPARATOR:
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid information separator: %s", hex(information_separator)
             )
         data_header_parameter: int = stream.read("uint8")
         if data_header_parameter != cls.data_header_parameter():
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid data header parameter: %s", hex(data_header_parameter)
             )
 
@@ -333,12 +332,12 @@ class PageDataHeaderB(DataHeaderBase):
     def read(cls, stream: BitStream) -> Self:
         information_separator: int = stream.read("uint8")
         if information_separator != INFORMATION_SEPARATOR:
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid information separator: %s", hex(information_separator)
             )
         data_header_parameter: int = stream.read("uint8")
         if data_header_parameter != cls.data_header_parameter():
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid data header parameter: %s", hex(data_header_parameter)
             )
 
@@ -440,12 +439,12 @@ class ProgramCommonMacroDataHeaderA(DataHeaderBase):
     def read(cls, stream: BitStream) -> Self:
         information_separator: int = stream.read("uint8")
         if information_separator != INFORMATION_SEPARATOR:
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid information separator: %s", hex(information_separator)
             )
         data_header_parameter: int = stream.read("uint8")
         if data_header_parameter != cls.data_header_parameter():
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid data header parameter: %s", hex(data_header_parameter)
             )
 
@@ -531,12 +530,12 @@ class ProgramCommonMacroDataHeaderB(DataHeaderBase):
     def read(cls, stream: BitStream) -> Self:
         information_separator: int = stream.read("uint8")
         if information_separator != INFORMATION_SEPARATOR:
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid information separator: %s", hex(information_separator)
             )
         data_header_parameter: int = stream.read("uint8")
         if data_header_parameter != cls.data_header_parameter():
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid data header parameter: %s", hex(data_header_parameter)
             )
 
@@ -606,12 +605,12 @@ class ContinueDataHeader(DataHeaderBase):
     def read(cls, stream: BitStream) -> Self:
         information_separator: int = stream.read("uint8")
         if information_separator != INFORMATION_SEPARATOR:
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid information separator: %s", hex(information_separator)
             )
         data_header_parameter: int = stream.read("uint8")
         if data_header_parameter != cls.data_header_parameter():
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid data header parameter: %s", hex(data_header_parameter)
             )
 
@@ -643,12 +642,12 @@ class ProgramIndexDataHeader(DataHeaderBase):
     def read(cls, stream: BitStream) -> Self:
         information_separator: int = stream.read("uint8")
         if information_separator != INFORMATION_SEPARATOR:
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid information separator: %s", hex(information_separator)
             )
         data_header_parameter: int = stream.read("uint8")
         if data_header_parameter != cls.data_header_parameter():
-            cls._logger.warning(
+            raise ValueError(
                 "Invalid data header parameter: %s", hex(data_header_parameter)
             )
 
@@ -700,8 +699,10 @@ class GenericDataUnit:
     def read(cls, stream: BitStream) -> Self:
         data_unit_separator: int = stream.read("uint8")
         if data_unit_separator != DATA_UNIT_SEPARATOR:
-            cls._logger.warning(
-                "Invalid data unit separator: %s", hex(data_unit_separator)
+            raise ValueError(
+                "Invalid data unit separator: %s, following data: %s",
+                hex(data_unit_separator),
+                stream.peek("bytes").hex(" ").upper(),
             )
 
         data_unit_parameter: int = stream.read("uint8")

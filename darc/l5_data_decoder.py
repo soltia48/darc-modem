@@ -34,7 +34,8 @@ class L5DataDecoder:
                 try:
                     first_byte: int = stream.peek("uint8")
                     if first_byte == 0x00:
-                        break
+                        stream.read("uint8")
+                        continue
                     data_unit = GenericDataUnit.read(stream)
                     data_units.append(data_unit)
                 except ReadError:

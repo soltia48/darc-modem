@@ -116,7 +116,7 @@ class L4DataGroup1:
         # Extract header fields (with bit reversal)
         start_of_heading = buffer[0:8][::-1].uint
         if start_of_heading != START_OF_HEADING:
-            cls._logger.warning("Invalid start of heading: %s", hex(start_of_heading))
+            raise ValueError("Invalid start of heading: %s", hex(start_of_heading))
 
         data_group_link = buffer[15:16].uint
         data_size = buffer[8:15][::-1].uint << 8 | buffer[16:24][::-1].uint
