@@ -1,12 +1,9 @@
-#!/usr/bin/env python3.13
-
 import argparse
 import logging
 import sys
-from typing import Final, TypeAlias, Sequence, NoReturn
+from dataclasses import dataclass, fields
 from pathlib import Path
-from dataclasses import dataclass
-
+from typing import Final, Literal, NoReturn, Self, Sequence, TypeAlias, Any, get_type_hints
 
 from darc.dump_binary import dump_binary
 from darc.l2_block_decoder import L2BlockDecoder
@@ -14,26 +11,80 @@ from darc.l2_frame_decoder import L2FrameDecoder
 from darc.l3_data_packet_decoder import L3DataPacketDecoder
 from darc.l4_data import L4DataGroup1, L4DataGroup2
 from darc.l4_data_group_decoder import L4DataGroupDecoder
-from darc.l5_data import GenericDataUnit
+from darc.l5_data import GenericDataUnit, Segment
 from darc.l5_data_decoder import L5DataDecoder
+from darc.l5_data import (
+    DataHeaderBase,
+    ProgramDataHeaderA,
+    ProgramDataHeaderB,
+    PageDataHeaderA,
+    PageDataHeaderB,
+    ProgramCommonMacroDataHeaderA,
+    ProgramCommonMacroDataHeaderB,
+    ContinueDataHeader,
+    ProgramIndexDataHeader,
+)
 
-# Type aliases
+# Type aliases with more specific typing
 DataGroup: TypeAlias = L4DataGroup1 | L4DataGroup2
-LogLevel: TypeAlias = str
-BitValue: TypeAlias = int
+LogLevel: TypeAlias = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+BitValue: TypeAlias = Literal[0, 1]
 
 # Constants
 STDIN_MARKER: Final[str] = "-"
-DEFAULT_LOG_LEVEL: Final[str] = "WARNING"
+DEFAULT_LOG_LEVEL: Final[LogLevel] = "WARNING"
 PROGRAM_DESCRIPTION: Final[str] = "DARC bitstream Decoder"
+SEPARATOR_LINE: Final[str] = "-" * 80
+DOUBLE_SEPARATOR: Final[str] = "=" * 80
 
 
-@dataclass
-class DecoderPipeline:
-    """DARC decoder pipeline configuration.
+def format_hex(value: int | None, width: int = 2) -> str:
+    """Format hex value with consistent width."""
+    if value is None:
+        return "None"
+    return f"0x{value:0{width}X}"
 
-    Manages the complete decoding chain from L2 to L4.
+
+def format_data_header(header: DataHeaderBase) -> str:
+    """Format data header for output display.
+
+    Args:
+        header: Data header to format
+
+    Returns:
+        Formatted string representation of the data header
     """
+    header_type = header.__class__.__name__
+    lines = [DOUBLE_SEPARATOR, f"DATA HEADER: {header_type}", SEPARATOR_LINE]
+
+    # Get all fields except internal ones (starting with _)
+    field_list = [f for f in fields(header) if not f.name.startswith("_")]
+
+    # Format each field
+    field_types = get_type_hints(header.__class__)
+    for field in field_list:
+        value = getattr(header, field.name)
+        field_type = field_types.get(field.name, Any)
+
+        if isinstance(value, int):
+            # Format numeric values as hex and decimal
+            formatted_value = f"{format_hex(value)} ({value})"
+        elif value is None:
+            formatted_value = "None"
+        else:
+            formatted_value = str(value)
+
+        # Convert field name from snake_case to Title Case
+        field_name = field.name.replace("_", " ").title()
+        lines.append(f"{field_name:<25}: {formatted_value}")
+
+    lines.append(DOUBLE_SEPARATOR)
+    return "\n".join(lines)
+
+
+@dataclass(frozen=True, slots=True)
+class DecoderPipeline:
+    """DARC decoder pipeline configuration."""
 
     l2_block_decoder: L2BlockDecoder
     l2_frame_decoder: L2FrameDecoder
@@ -42,7 +93,7 @@ class DecoderPipeline:
     l5_data_decoder: L5DataDecoder
 
     @classmethod
-    def create(cls) -> "DecoderPipeline":
+    def create(cls) -> Self:
         """Create a new decoder pipeline instance."""
         return cls(
             L2BlockDecoder(),
@@ -53,158 +104,141 @@ class DecoderPipeline:
         )
 
 
-def format_datagroup_output(data_group: DataGroup) -> str:
-    """Format data group for output display with improved readability.
+def format_data_unit(data_unit: GenericDataUnit | bytes) -> str:
+    """Format data unit for output display."""
+    lines = [SEPARATOR_LINE]
 
-    Args:
-        data_group: L4 data group to format
+    match data_unit:
+        case GenericDataUnit():
+            lines.extend(
+                [
+                    "GENERIC DATA UNIT",
+                    f"Parameter     : {format_hex(data_unit.data_unit_parameter)}",
+                    f"Link Flag     : {format_hex(data_unit.data_unit_link_flag)}",
+                    "Data          :",
+                    dump_binary(data_unit.data_unit_data),
+                ]
+            )
+        case bytes():
+            lines.extend(
+                [
+                    "RAW DATA UNIT (Potentially Scrambled)",
+                    dump_binary(data_unit),
+                ]
+            )
 
-    Returns:
-        Formatted string representation with clear structure and coloring
-    """
-    # ANSI color codes for better visual separation
-    HEADER = "\033[95m"
-    BLUE = "\033[94m"
-    GREEN = "\033[92m"
-    RED = "\033[91m"
-    ENDC = "\033[0m"
+    lines.append(SEPARATOR_LINE)
+    return "\n".join(lines)
 
-    # Common header information
-    header = f"{HEADER}{'='*50}{ENDC}\n"
-    crc_status = (
-        f"{GREEN}Valid{ENDC}" if data_group.is_crc_valid() else f"{RED}Invalid{ENDC}"
+
+def format_segment(segment: Segment) -> str:
+    """Format segment for output display."""
+    lines = [
+        DOUBLE_SEPARATOR,
+        "SEGMENT INFORMATION",
+        SEPARATOR_LINE,
+        f"Identifier    : {format_hex(segment.segment_identifier)}",
+    ]
+
+    if segment.segment_identifier == 0xE:
+        lines.extend(
+            [
+                f"Other Station Number      : {format_hex(segment.other_station_number)}",
+                f"Other Station Segment ID  : {format_hex(segment.other_station_segment_identifier)}",
+            ]
+        )
+
+    lines.extend(
+        [
+            "Segment Data  :",
+            dump_binary(segment.segment_data),
+            DOUBLE_SEPARATOR,
+        ]
     )
 
-    common_fields = [
-        f"CRC Status    : {crc_status}",
-        f"Service ID    : {BLUE}{data_group.service_id.name}{ENDC}",
-        f"Group Number  : {BLUE}{hex(data_group.data_group_number)}{ENDC}",
+    return "\n".join(lines)
+
+
+def format_datagroup_output(data_group: DataGroup) -> str:
+    """Format data group for output display."""
+    lines = [
+        DOUBLE_SEPARATOR,
+        "DATA GROUP INFORMATION",
+        SEPARATOR_LINE,
+        f"Type          : {'Type 1' if isinstance(data_group, L4DataGroup1) else 'Type 2'}",
+        f"CRC Status    : {'Valid' if data_group.is_crc_valid() else 'Invalid'}",
+        f"Service ID    : {data_group.service_id.name}",
+        f"Group Number  : {format_hex(data_group.data_group_number)}",
     ]
 
-    if isinstance(data_group, L4DataGroup1):
-        # Format Group 1 specific fields
-        specific_fields = [
-            f"Group Link    : {hex(data_group.data_group_link)}",
-            f"Group Data    : {data_group.data_group_data.bytes.hex()}",
-            f"End Marker    : {hex(data_group.end_of_data_group)}",
-            f"CRC Value     : {hex(data_group.crc)}",
-        ]
-        group_type = "Data Group Type 1"
-    else:
-        # Format Group 2 specific fields
-        crc_value = "None" if data_group.crc is None else hex(data_group.crc)
-        specific_fields = [
-            f"Segments Data : {data_group.segments_data.bytes.hex()}",
-            f"CRC Value     : {crc_value}",
-        ]
-        group_type = "Data Group Type 2"
+    match data_group:
+        case L4DataGroup1():
+            lines.extend(
+                [
+                    f"Group Link    : {format_hex(data_group.data_group_link)}",
+                    f"End Marker    : {format_hex(data_group.end_of_data_group)}",
+                    f"CRC Value     : {format_hex(data_group.crc)}",
+                    # "Group Data    :",
+                    # dump_binary(data_group.data_group_data.bytes),
+                ]
+            )
+        case L4DataGroup2():
+            lines.extend(
+                [
+                    f"CRC Value     : {format_hex(data_group.crc)}",
+                    # "Segments Data :",
+                    # dump_binary(data_group.segments_data.bytes),
+                ]
+            )
 
-    # Combine all parts with proper formatting
-    output_parts = [
-        header,
-        f"{HEADER}{group_type}{ENDC}",
-        *common_fields,
-        f"{HEADER}{'-'*50}{ENDC}",
-        *specific_fields,
-        f"{HEADER}{'='*50}{ENDC}\n",
-    ]
-
-    return "\n".join(output_parts)
+    lines.append(DOUBLE_SEPARATOR)
+    return "\n".join(lines)
 
 
 def setup_logging(level: LogLevel) -> None:
-    """Configure logging with specified level and improved format.
-
-    Args:
-        level: Logging level name
-    """
-    log_level = logging._nameToLevel[level]
-
-    # Define custom log format with colors
-    class ColoredFormatter(logging.Formatter):
-        COLORS = {
-            "DEBUG": "\033[94m",  # Blue
-            "INFO": "\033[92m",  # Green
-            "WARNING": "\033[93m",  # Yellow
-            "ERROR": "\033[91m",  # Red
-            "CRITICAL": "\033[95m",  # Purple
-        }
-
-        def format(self, record):
-            # Add color to level name if available
-            if record.levelname in self.COLORS:
-                record.levelname = (
-                    f"{self.COLORS[record.levelname]}{record.levelname}\033[0m"
-                )
-            return super().format(record)
-
-    # Create and set formatted handler
-    handler = logging.StreamHandler()
-    formatter = ColoredFormatter(
+    """Configure logging with specified level."""
+    formatter = logging.Formatter(
         "%(asctime)s [%(levelname)s] %(name)s.%(funcName)s:%(lineno)d - %(message)s"
     )
+    handler = logging.StreamHandler()
     handler.setFormatter(formatter)
 
-    # Configure root logger
     root_logger = logging.getLogger()
-    root_logger.setLevel(log_level)
+    root_logger.setLevel(level)
     root_logger.addHandler(handler)
 
 
 def process_stdin(pipeline: DecoderPipeline) -> NoReturn:
-    """Process DARC bitstream from standard input.
-
-    Args:
-        pipeline: Configured decoder pipeline
-
-    Note:
-        This function runs indefinitely until interrupted.
-    """
+    """Process DARC bitstream from standard input."""
     while True:
         try:
-            # Read and decode single bit
             bit = ord(sys.stdin.read(1))
 
-            # Process through decoder pipeline
-            if block := pipeline.l2_block_decoder.push_bit(bit):
-                if frame := pipeline.l2_frame_decoder.push_block(block):
-                    data_packets = pipeline.l3_packet_decoder.push_frame(frame)
-                    data_groups = pipeline.l4_group_decoder.push_data_packets(
-                        data_packets
-                    )
-                    for data_group in data_groups:
-                        data_header, data_units = (
-                            pipeline.l5_data_decoder.push_data_group(data_group)
-                        )
+            if not (block := pipeline.l2_block_decoder.push_bit(bit)):
+                continue
+
+            if not (frame := pipeline.l2_frame_decoder.push_block(block)):
+                continue
+
+            data_packets = pipeline.l3_packet_decoder.push_frame(frame)
+            data_groups = pipeline.l4_group_decoder.push_data_packets(data_packets)
+
+            for data_group in data_groups:
+                l5_data = pipeline.l5_data_decoder.push_data_group(data_group)
+
+                match l5_data:
+                    case (data_header, data_units):
                         if data_header is None:
                             continue
-                        print(format_datagroup_output(data_group))
-                        print("=" * 64)
-                        print()
-                        print("Data Header :       ", data_header)
-                        print()
-                        for data_unit in data_units:
-                            print("-" * 32)
-                            if isinstance(data_unit, GenericDataUnit):
-                                print(
-                                    "Data Unit Parameter:",
-                                    format(data_unit.data_unit_parameter, "02X"),
-                                )
-                                print(
-                                    "Data Unit Link Flag:",
-                                    format(data_unit.data_unit_link_flag, "02X"),
-                                )
-                                print("Data Unit Data:")
-                                print(dump_binary(data_unit.data))
-                            elif isinstance(data_unit, bytes):
-                                print("Data Unit (Maybe scrambled):")
-                                print(dump_binary(data_unit))
-                            print("-" * 32)
-                            print()
 
-                    # Output decoded data groups
-                    # for group in data_groups:
-                    # print(format_datagroup_output(group))
+                        print(format_datagroup_output(data_group))
+                        print(format_data_header(data_header))
+
+                        for data_unit in data_units:
+                            print(format_data_unit(data_unit))
+
+                    case Segment():
+                        print(format_segment(l5_data))
 
         except (KeyboardInterrupt, EOFError):
             sys.exit(0)
@@ -214,27 +248,13 @@ def process_stdin(pipeline: DecoderPipeline) -> NoReturn:
 
 
 def process_file(path: Path) -> NoReturn:
-    """Process DARC bitstream from file.
-
-    Args:
-        path: Path to input file
-
-    Note:
-        Currently not implemented.
-    """
+    """Process DARC bitstream from file."""
     print("File input is not yet supported.")
     sys.exit(1)
 
 
 def parse_arguments(args: Sequence[str] | None = None) -> argparse.Namespace:
-    """Parse command line arguments.
-
-    Args:
-        args: Command line arguments (None uses sys.argv)
-
-    Returns:
-        Parsed argument namespace
-    """
+    """Parse command line arguments."""
     parser = argparse.ArgumentParser(description=PROGRAM_DESCRIPTION)
     parser.add_argument(
         "input_path", help=f"Input DARC bitstream path ({STDIN_MARKER} for stdin)"
@@ -244,20 +264,13 @@ def parse_arguments(args: Sequence[str] | None = None) -> argparse.Namespace:
         "--loglevel",
         default=DEFAULT_LOG_LEVEL,
         help="Logging level",
-        choices=list(logging._nameToLevel.keys()),
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
     )
     return parser.parse_args(args)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Main program entry point.
-
-    Args:
-        argv: Command line arguments (None uses sys.argv)
-
-    Returns:
-        Exit code (0 for success)
-    """
+    """Main program entry point."""
     try:
         args = parse_arguments(argv)
         setup_logging(args.loglevel)
