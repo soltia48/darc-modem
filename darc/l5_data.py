@@ -696,12 +696,14 @@ class GenericDataUnit:
         return Buffer(buffer)
 
     @classmethod
-    def read(cls, stream: BitStream) -> Self:
+    def read(cls, stream: BitStream) -> Self | bytes:
         data_unit_separator: int = stream.read("uint8")
         if data_unit_separator != DATA_UNIT_SEPARATOR:
-            raise ValueError(
-                f"Invalid data unit separator: {hex(data_unit_separator)}, following data: {stream.peek("bytes").hex(" ").upper(),}"
+            cls._logger.warning(
+                "Invalid data unit separator: %s", hex(data_unit_separator)
             )
+            stream.bytepos -= 1
+            return stream.read("bytes")
 
         data_unit_parameter: int = stream.read("uint8")
         data_unit_link_flag: int = stream.read("uint1")

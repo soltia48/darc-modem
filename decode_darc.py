@@ -14,6 +14,7 @@ from darc.l2_frame_decoder import L2FrameDecoder
 from darc.l3_data_packet_decoder import L3DataPacketDecoder
 from darc.l4_data import L4DataGroup1, L4DataGroup2
 from darc.l4_data_group_decoder import L4DataGroupDecoder
+from darc.l5_data import GenericDataUnit
 from darc.l5_data_decoder import L5DataDecoder
 
 # Type aliases
@@ -171,21 +172,33 @@ def process_stdin(pipeline: DecoderPipeline) -> NoReturn:
                     data_groups = pipeline.l4_group_decoder.push_data_packets(
                         data_packets
                     )
-                    data = pipeline.l5_data_decoder.push_data_groups(data_groups)
-                    # print(data)
-                    for data_ in data:
+                    for data_group in data_groups:
+                        data_header, data_units = (
+                            pipeline.l5_data_decoder.push_data_group(data_group)
+                        )
+                        if data_header is None:
+                            continue
+                        print(format_datagroup_output(data_group))
                         print("=" * 64)
                         print()
-                        print("Data Header :       ", data_[0])
+                        print("Data Header :       ", data_header)
                         print()
-                        for data_unit in data_[1]:
+                        for data_unit in data_units:
                             print("-" * 32)
-                            print(
-                                "Data Unit Parameter:",
-                                format(data_unit.data_unit_parameter, "02X"),
-                            )
-                            print("Data Unit Data:")
-                            print(dump_binary(data_unit.data))
+                            if isinstance(data_unit, GenericDataUnit):
+                                print(
+                                    "Data Unit Parameter:",
+                                    format(data_unit.data_unit_parameter, "02X"),
+                                )
+                                print(
+                                    "Data Unit Link Flag:",
+                                    format(data_unit.data_unit_link_flag, "02X"),
+                                )
+                                print("Data Unit Data:")
+                                print(dump_binary(data_unit.data))
+                            elif isinstance(data_unit, bytes):
+                                print("Data Unit (Maybe scrambled):")
+                                print(dump_binary(data_unit))
                             print("-" * 32)
                             print()
 
