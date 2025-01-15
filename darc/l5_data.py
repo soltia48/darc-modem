@@ -700,9 +700,7 @@ class GenericDataUnit:
         data_unit_separator: int = stream.read("uint8")
         if data_unit_separator != DATA_UNIT_SEPARATOR:
             raise ValueError(
-                "Invalid data unit separator: %s, following data: %s",
-                hex(data_unit_separator),
-                stream.peek("bytes").hex(" ").upper(),
+                f"Invalid data unit separator: {hex(data_unit_separator)}, following data: {stream.peek("bytes").hex(" ").upper(),}"
             )
 
         data_unit_parameter: int = stream.read("uint8")
