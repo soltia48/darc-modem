@@ -3,8 +3,18 @@ import logging
 import sys
 from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import Final, Literal, NoReturn, Self, Sequence, TypeAlias, Any, get_type_hints
+from typing import (
+    Final,
+    Literal,
+    NoReturn,
+    Self,
+    Sequence,
+    TypeAlias,
+    Any,
+    get_type_hints,
+)
 
+from darc.arib_string import AribDecoder
 from darc.dump_binary import dump_binary
 from darc.l2_block_decoder import L2BlockDecoder
 from darc.l2_frame_decoder import L2FrameDecoder
@@ -107,9 +117,14 @@ class DecoderPipeline:
 def format_data_unit(data_unit: GenericDataUnit | bytes) -> str:
     """Format data unit for output display."""
     lines = [SEPARATOR_LINE]
+    decoder = AribDecoder()
 
     match data_unit:
         case GenericDataUnit():
+            try:
+                data_arib_str = decoder.decode(data_unit.data_unit_data)
+            except:
+                data_arib_str = None
             lines.extend(
                 [
                     "GENERIC DATA UNIT",
@@ -117,13 +132,19 @@ def format_data_unit(data_unit: GenericDataUnit | bytes) -> str:
                     f"Link Flag     : {format_hex(data_unit.data_unit_link_flag)}",
                     "Data          :",
                     dump_binary(data_unit.data_unit_data),
+                    f"Data (ARIBStr): {data_arib_str}",
                 ]
             )
         case bytes():
+            try:
+                data_arib_str = decoder.decode(data_unit)
+            except:
+                data_arib_str = None
             lines.extend(
                 [
                     "RAW DATA UNIT (Potentially Scrambled)",
                     dump_binary(data_unit),
+                    f"Data (ARIBStr): {data_arib_str}",
                 ]
             )
 
@@ -139,6 +160,7 @@ def format_segment(segment: Segment) -> str:
         SEPARATOR_LINE,
         f"Identifier    : {format_hex(segment.segment_identifier)}",
     ]
+    decoder = AribDecoder()
 
     if segment.segment_identifier == 0xE:
         lines.extend(
@@ -148,10 +170,16 @@ def format_segment(segment: Segment) -> str:
             ]
         )
 
+    try:
+        data_arib_str = decoder.decode(segment.segment_data)
+    except:
+        data_arib_str = None
+
     lines.extend(
         [
             "Segment Data  :",
             dump_binary(segment.segment_data),
+            f"Data (ARIBStr): {data_arib_str}",
             DOUBLE_SEPARATOR,
         ]
     )
