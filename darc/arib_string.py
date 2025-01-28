@@ -1,33 +1,36 @@
-from enum import Enum, auto
-from importlib.resources import files
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, Final, TypeAlias, Self
 import unicodedata
 
 
 class CharacterClass(Enum):
-    KANJI = 1
-    ALPHANUMERIC = 2
-    HIRAGANA = 3
-    KATAKANA = 4
-    MOSAIC_A = 5
-    MOSAIC_B = 6
-    MOSAIC_C = 7
-    MOSAIC_D = 8
-    MACRO = 9
-    DRCS_1 = 10
-    DRCS_2 = 11
-    DRCS_3 = 12
-    DRCS_4 = 13
-    DRCS_5 = 14
-    DRCS_6 = 15
-    DRCS_7 = 16
-    DRCS_8 = 17
-    DRCS_9 = 18
-    DRCS_10 = 19
-    DRCS_11 = 20
-    DRCS_12 = 21
-    DRCS_13 = 22
-    DRCS_14 = 23
-    DRCS_15 = 24
+    KANJI = 0x42
+    ALPHANUMERIC = 0x4A
+    HIRAGANA = 0x30
+    KATAKANA = 0x31
+    MOSAIC_A = 0x32
+    MOSAIC_B = 0x33
+    MOSAIC_C = 0x34
+    MOSAIC_D = 0x35
+    MACRO = 0x70
+    DRCS_0 = 0x40
+    DRCS_1 = 0x41
+    DRCS_2 = 0x42
+    DRCS_3 = 0x43
+    DRCS_4 = 0x44
+    DRCS_5 = 0x45
+    DRCS_6 = 0x46
+    DRCS_7 = 0x47
+    DRCS_8 = 0x48
+    DRCS_9 = 0x49
+    DRCS_10 = 0x4A
+    DRCS_11 = 0x4B
+    DRCS_12 = 0x4C
+    DRCS_13 = 0x4D
+    DRCS_14 = 0x4E
+    DRCS_15 = 0x4F
 
 
 class ControlCode(Enum):
@@ -81,11 +84,45 @@ class ControlCode(Enum):
     TIME = 0x9D
 
 
+ByteHandler: TypeAlias = Callable[[bytes, int], int]
+CharacterMap: TypeAlias = dict[int, str]
+MacroMap: TypeAlias = dict[int, bytes]
+DRCSMap: TypeAlias = dict[CharacterClass, dict[int, str]]
+
+
+@dataclass
+class DecoderState:
+    """Maintains the current state of the decoder"""
+
+    g0: CharacterClass = CharacterClass.KANJI
+    g1: CharacterClass = CharacterClass.ALPHANUMERIC
+    g2: CharacterClass = CharacterClass.HIRAGANA
+    g3: CharacterClass = CharacterClass.MACRO
+    gl: CharacterClass = field(init=False)
+    gr: CharacterClass = field(init=False)
+    single_shift: CharacterClass | None = None
+    drcs_maps: DRCSMap = field(default_factory=dict)
+    position: tuple[int, int] = (0, 0)
+    buffer: list[list[str]] = field(default_factory=list)
+    macro_stack: list[bytes] = field(default_factory=list)
+    expecting_drcs: bool = False
+
+    def __post_init__(self) -> None:
+        """Initialize dependent fields after instance creation"""
+        self.gl = self.g0
+        self.gr = self.g2
+
+
 class AribDecoder:
+    """ARIB STD-B24 character decoder implementation"""
+
+    REPLACEMENT_CHAR: Final = "�"
+    MAX_MACRO_DEPTH: Final = 10
+
     def __init__(self) -> None:
-        self.reset_state()
+        self.state = DecoderState()
         self._init_character_sets()
-        self._init_control_sequences()
+        self._init_control_handlers()
         self._init_macros()
 
     def reset_state(self) -> None:
@@ -93,39 +130,36 @@ class AribDecoder:
         self.g0 = CharacterClass.KANJI
         self.g1 = CharacterClass.ALPHANUMERIC
         self.g2 = CharacterClass.HIRAGANA
-        self.g3 = CharacterClass.KATAKANA
+        self.g3 = CharacterClass.MACRO
         self.gl = self.g0  # Left side G set
         self.gr = self.g2  # Right side G set
         self.single_shift: CharacterClass | None = None
         self.drcs_maps: dict[CharacterClass, dict[int, str]] = {}
         self.position: tuple[int, int] = (0, 0)
         self.buffer: list[list[str]] = []
+        self.macro_stack: list[bytes] = []
+        self.expecting_drcs = False
+        self.current_macro_context: dict[str, Any] = {}
 
     def _init_character_sets(self) -> None:
         """Initialize character set mapping tables"""
-        # Kanji mapping (JIS X 0213:2004)
-        self.kanji_map: dict[int, str] = self._create_kanji_map()
-
-        # Alphanumeric mapping
-        self.alphanumeric_map: dict[int, str] = {i: chr(i) for i in range(0x21, 0x7F)}
-
-        # Hiragana mapping
-        self.hiragana_map: dict[int, str] = self._create_hiragana_map()
-
-        # Katakana mapping
-        self.katakana_map: dict[int, str] = self._create_katakana_map()
-
-        # Mosaic mapping
-        self.mosaic_maps: dict[CharacterClass, dict[int, str]] = {
-            CharacterClass.MOSAIC_A: {},
-            CharacterClass.MOSAIC_B: {},
-            CharacterClass.MOSAIC_C: {},
-            CharacterClass.MOSAIC_D: {},
+        self.kanji_map: CharacterMap = self._create_kanji_map()
+        self.alphanumeric_map: CharacterMap = {i: chr(i) for i in range(0x21, 0x7F)}
+        self.hiragana_map: CharacterMap = self._create_hiragana_map()
+        self.katakana_map: CharacterMap = self._create_katakana_map()
+        self.mosaic_maps: dict[CharacterClass, CharacterMap] = {
+            cls: {}
+            for cls in (
+                CharacterClass.MOSAIC_A,
+                CharacterClass.MOSAIC_B,
+                CharacterClass.MOSAIC_C,
+                CharacterClass.MOSAIC_D,
+            )
         }
 
-    def _create_kanji_map(self) -> dict[int, str]:
-        """Initialize using JIS X 0213:2004 standard mappings"""
-        kanji_map: dict[int, str] = {}
+    def _create_kanji_map(self) -> CharacterMap:
+        """Create JIS X 0213:2004 kanji mapping with caching"""
+        kanji_map: CharacterMap = {}
 
         for first in range(0x21, 0x7F):
             for second in range(0x21, 0x7F):
@@ -152,16 +186,16 @@ class AribDecoder:
 
         return kanji_map
 
-    def _create_hiragana_map(self) -> dict[int, str]:
-        """Generate hiragana mapping"""
-        hiragana_map: dict[int, str] = {}
+    def _create_hiragana_map(self) -> CharacterMap:
+        """Generate hiragana character mapping"""
+        hiragana_map: CharacterMap = {}
 
         # Map using Unicode ranges
         hiragana_start = 0x3041  # Unicode for ぁ
         arib_start = 0x21
 
-        # Map ARIB codes to Unicode hiragana
-        for i in range(83):  # Total number of hiragana characters in ARIB
+        # Map standard hiragana
+        for i in range(83):
             unicode_char = chr(hiragana_start + i)
             if unicodedata.category(unicode_char).startswith("Lo"):
                 hiragana_map[arib_start + i] = unicode_char
@@ -171,15 +205,15 @@ class AribDecoder:
 
         return hiragana_map
 
-    def _create_katakana_map(self) -> dict[int, str]:
-        """Generate katakana mapping"""
-        katakana_map: dict[int, str] = {}
+    def _create_katakana_map(self) -> CharacterMap:
+        """Generate katakana character mapping"""
+        katakana_map: CharacterMap = {}
 
         # Map using Unicode ranges
         katakana_start = 0x30A1  # Unicode for ァ
         arib_start = 0x21
 
-        # Map ARIB codes to Unicode katakana
+        # Map standard katakana
         for i in range(83):
             unicode_char = chr(katakana_start + i)
             if unicodedata.category(unicode_char).startswith("Lo"):
@@ -190,9 +224,9 @@ class AribDecoder:
 
         return katakana_map
 
-    def _init_control_sequences(self) -> None:
+    def _init_control_handlers(self) -> None:
         """Initialize control sequence handlers"""
-        self.control_handlers: dict[ControlCode, type[bytes | int]] = {
+        self.control_handlers: dict[ControlCode, ByteHandler] = {
             ControlCode.APB: self._handle_apb,
             ControlCode.APF: self._handle_apf,
             ControlCode.APD: self._handle_apd,
@@ -210,7 +244,7 @@ class AribDecoder:
             ControlCode.POL: self._handle_pol,
             ControlCode.SZX: self._handle_szx,
             ControlCode.CDC: self._handle_cdc,
-            ControlCode.CDC: self._handle_wmm,
+            ControlCode.WMM: self._handle_wmm,
             ControlCode.TIME: self._handle_time,
             ControlCode.MACRO: self._handle_macro,
             ControlCode.RPC: self._handle_rpc,
@@ -224,434 +258,761 @@ class AribDecoder:
         """Initialize macro definitions"""
         self.macros: dict[int, bytes] = {}
 
+        # 6/0 (0x60)
+        self.macros[0x60] = bytes(
+            [
+                0x1B,
+                0x24,
+                0x42,  # ESC 02/4 F (Kanji: 0x42)
+                0x1B,
+                0x29,
+                0x4A,  # ESC 02/9 F (Alphanumeric: 0x4A)
+                0x1B,
+                0x2A,
+                0x30,  # ESC 02/10 F (Hiragana: 0x30)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
+        # 6/1 (0x61)
+        self.macros[0x61] = bytes(
+            [
+                0x1B,
+                0x24,
+                0x42,  # ESC 02/4 F (Kanji: 0x42)
+                0x1B,
+                0x29,
+                0x31,  # ESC 02/9 F (Katakana: 0x31)
+                0x1B,
+                0x2A,
+                0x30,  # ESC 02/10 F (Hiragana: 0x30)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
+        # 6/2 (0x62)
+        self.macros[0x62] = bytes(
+            [
+                0x1B,
+                0x24,
+                0x42,  # ESC 02/4 F (Kanji: 0x42)
+                0x1B,
+                0x29,
+                0x20,
+                0x41,  # ESC 02/9 02/0 F (DRCS-1: 0x41)
+                0x1B,
+                0x2A,
+                0x30,  # ESC 02/10 F (Hiragana: 0x30)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
+        # 6/3 (0x63)
+        self.macros[0x63] = bytes(
+            [
+                0x1B,
+                0x28,
+                0x32,  # ESC 02/8 F (Mosaic A: 0x32)
+                0x1B,
+                0x29,
+                0x34,  # ESC 02/9 F (Mosaic C: 0x34)
+                0x1B,
+                0x2A,
+                0x35,  # ESC 02/10 F (Mosaic D: 0x35)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
+        # 6/4 (0x64)
+        self.macros[0x64] = bytes(
+            [
+                0x1B,
+                0x28,
+                0x32,  # ESC 02/8 F (Mosaic A: 0x32)
+                0x1B,
+                0x29,
+                0x33,  # ESC 02/9 F (Mosaic B: 0x33)
+                0x1B,
+                0x2A,
+                0x35,  # ESC 02/10 F (Mosaic D: 0x35)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
+        # 6/5 (0x65)
+        self.macros[0x65] = bytes(
+            [
+                0x1B,
+                0x28,
+                0x32,  # ESC 02/8 F (Mosaic A: 0x32)
+                0x1B,
+                0x29,
+                0x20,
+                0x41,  # ESC 02/9 02/0 F (DRCS-1: 0x41)
+                0x1B,
+                0x2A,
+                0x35,  # ESC 02/10 F (Mosaic D: 0x35)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
+        # 6/6 (0x66)
+        self.macros[0x66] = bytes(
+            [
+                0x1B,
+                0x28,
+                0x20,
+                0x41,  # ESC 02/8 02/0 F (DRCS-1: 0x41)
+                0x1B,
+                0x29,
+                0x20,
+                0x42,  # ESC 02/9 02/0 F (DRCS-2: 0x42)
+                0x1B,
+                0x2A,
+                0x20,
+                0x43,  # ESC 02/10 02/0 F (DRCS-3: 0x43)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
+        # 6/7 (0x67)
+        self.macros[0x67] = bytes(
+            [
+                0x1B,
+                0x28,
+                0x20,
+                0x44,  # ESC 02/8 02/0 F (DRCS-4: 0x44)
+                0x1B,
+                0x29,
+                0x20,
+                0x45,  # ESC 02/9 02/0 F (DRCS-5: 0x45)
+                0x1B,
+                0x2A,
+                0x20,
+                0x46,  # ESC 02/10 02/0 F (DRCS-6: 0x46)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
+        # 6/8 (0x68)
+        self.macros[0x68] = bytes(
+            [
+                0x1B,
+                0x28,
+                0x20,
+                0x47,  # ESC 02/8 02/0 F (DRCS-7: 0x47)
+                0x1B,
+                0x29,
+                0x20,
+                0x48,  # ESC 02/9 02/0 F (DRCS-8: 0x48)
+                0x1B,
+                0x2A,
+                0x20,
+                0x49,  # ESC 02/10 02/0 F (DRCS-9: 0x49)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
+        # 6/9 (0x69)
+        self.macros[0x69] = bytes(
+            [
+                0x1B,
+                0x28,
+                0x20,
+                0x4A,  # ESC 02/8 02/0 F (DRCS-10: 0x4A)
+                0x1B,
+                0x29,
+                0x20,
+                0x4B,  # ESC 02/9 02/0 F (DRCS-11: 0x4B)
+                0x1B,
+                0x2A,
+                0x20,
+                0x4C,  # ESC 02/10 02/0 F (DRCS-12: 0x4C)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
+        # 6/10 (0x6A)
+        self.macros[0x6A] = bytes(
+            [
+                0x1B,
+                0x28,
+                0x20,
+                0x4D,  # ESC 02/8 02/0 F (DRCS-13: 0x4D)
+                0x1B,
+                0x29,
+                0x20,
+                0x4E,  # ESC 02/9 02/0 F (DRCS-14: 0x4E)
+                0x1B,
+                0x2A,
+                0x20,
+                0x4F,  # ESC 02/10 02/0 F (DRCS-15: 0x4F)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
+        # 6/11 (0x6B)
+        self.macros[0x6B] = bytes(
+            [
+                0x1B,
+                0x24,
+                0x42,  # ESC 02/4 F (Kanji: 0x42)
+                0x1B,
+                0x29,
+                0x20,
+                0x42,  # ESC 02/9 02/0 F (DRCS-2: 0x42)
+                0x1B,
+                0x2A,
+                0x30,  # ESC 02/10 F (Hiragana: 0x30)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
+        # 6/12 (0x6C)
+        self.macros[0x6C] = bytes(
+            [
+                0x1B,
+                0x24,
+                0x42,  # ESC 02/4 F (Kanji: 0x42)
+                0x1B,
+                0x29,
+                0x20,
+                0x43,  # ESC 02/9 02/0 F (DRCS-3: 0x43)
+                0x1B,
+                0x2A,
+                0x30,  # ESC 02/10 F (Hiragana: 0x30)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
+        # 6/13 (0x6D)
+        self.macros[0x6D] = bytes(
+            [
+                0x1B,
+                0x24,
+                0x42,  # ESC 02/4 F (Kanji: 0x42)
+                0x1B,
+                0x29,
+                0x20,
+                0x44,  # ESC 02/9 02/0 F (DRCS-4: 0x44)
+                0x1B,
+                0x2A,
+                0x30,  # ESC 02/10 F (Hiragana: 0x30)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
+        # 6/14 (0x6E)
+        self.macros[0x6E] = bytes(
+            [
+                0x1B,
+                0x28,
+                0x4A,  # ESC 02/8 F (Alphanumeric: 0x4A)
+                0x1B,
+                0x29,
+                0x30,  # ESC 02/9 F (Hiragana: 0x30)
+                0x1B,
+                0x2A,
+                0x42,  # ESC 02/10 F (Kanji: 0x42)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
+        # 6/15 (0x6F)
+        self.macros[0x6F] = bytes(
+            [
+                0x1B,
+                0x28,
+                0x42,  # ESC 02/8 F (Kanji: 0x42)
+                0x1B,
+                0x29,
+                0x32,  # ESC 02/9 F (Mosaic A: 0x32)
+                0x1B,
+                0x2A,
+                0x20,
+                0x41,  # ESC 02/10 02/0 F (DRCS-1: 0x41)
+                0x1B,
+                0x2B,
+                0x20,
+                0x70,  # ESC 02/11 02/0 F (Macro: 0x70)
+                0x0F,  # LS0
+                0x1B,
+                0x7D,  # ESC 07/13
+            ]
+        )
+
     def decode(self, data: bytes) -> str:
-        """Decode ARIB STD-B3 encoded bytes into Unicode text"""
+        """
+        Decode ARIB STD-B24 encoded bytes into Unicode text
+
+        Args:
+            data: Input bytes to decode
+
+        Returns:
+            Decoded Unicode string
+        """
         result: list[str] = []
         i = 0
+        data_len = len(data)
 
-        while i < len(data):
-            byte = data[i]
+        try:
+            while i < data_len:
+                byte = data[i]
 
-            # Handle control codes
-            if byte <= 0x20 or byte == 0x7F:
-                handler = self.control_handlers.get(ControlCode(byte))
-                if handler:
-                    i = handler(data, i)
-                i += 1
-                continue
+                # Skip invalid bytes
+                if not (0x00 <= byte <= 0xFF):
+                    i += 1
+                    result.append(self.REPLACEMENT_CHAR)
+                    continue
 
-            # Handle character sets
-            if byte < 0x80:  # GL area
-                char_set = self.gl
-                if self.single_shift:
-                    char_set = self.single_shift
-                    self.single_shift = None
-            else:  # GR area
-                char_set = self.gr
-                byte &= 0x7F
+                # Process control codes
+                if self.is_control_code(byte):
+                    try:
+                        handler = self.control_handlers.get(ControlCode(byte))
+                        if handler:
+                            i = handler(data, i)
+                    except (ValueError, IndexError):
+                        pass
+                    i += 1
+                    continue
 
-            # Handle Kanji (2-byte character)
-            if char_set == CharacterClass.KANJI:
-                if i + 1 >= len(data):
-                    break
+                # Determine character set and decode
+                try:
+                    if byte < 0x80:
+                        char_set = (
+                            self.state.single_shift
+                            if self.state.single_shift
+                            else self.state.gl
+                        )
+                        self.state.single_shift = None
+                    else:
+                        char_set = self.state.gr
+                        byte &= 0x7F
 
-                first_byte = byte
-                second_byte = data[i + 1]
-                char = self._decode_kanji(first_byte, second_byte)
-                i += 2
-            else:
-                # Handle single-byte character sets
-                char = self._decode_single_byte(byte, char_set)
-                i += 1
+                    char = (
+                        self._decode_kanji(byte, data[i + 1])
+                        if char_set == CharacterClass.KANJI
+                        else self._decode_single_byte(byte, char_set)
+                    )
 
-            result.append(char)
+                    result.append(char)
+                    i += 2 if char_set == CharacterClass.KANJI else 1
+
+                except (IndexError, KeyError):
+                    result.append(self.REPLACEMENT_CHAR)
+                    i += 1
+
+        except Exception as e:
+            print(f"Unexpected error during decoding: {e}")
 
         return "".join(result)
+
+    @staticmethod
+    def is_control_code(byte: int) -> bool:
+        """Check if byte is a control code"""
+        return byte <= 0x20 or byte == 0x7F
 
     def _decode_kanji(self, first_byte: int, second_byte: int) -> str:
         """Decode a kanji character from two bytes"""
         if not (0x21 <= first_byte <= 0x7E and 0x21 <= second_byte <= 0x7E):
-            return "〓"
+            return self.REPLACEMENT_CHAR
 
-        # Check cacheed kanji
         arib_code = (first_byte << 8) | second_byte
-        if arib_code in self.kanji_map:
-            return self.kanji_map[arib_code]
+        return self.kanji_map.get(arib_code, self.REPLACEMENT_CHAR)
 
-        try:
-            # Detect JIS X 0213 plane
-            plane = 1
-            if 0x21 <= first_byte <= 0x2F:
-                plane = 1
-            elif 0x75 <= first_byte <= 0x7E:
-                plane = 2
+    def _create_jis_sequence(
+        self, plane: int, first_byte: int, second_byte: int
+    ) -> bytes:
+        """
+        Create JIS escape sequence for given plane and bytes
 
-            # Use JIS X 0213 encoding
-            if plane == 1:
-                jis_seq = bytes(
-                    [
-                        0x1B,
-                        0x24,
-                        0x42,  # ESC $ B
-                        first_byte,
-                        second_byte,
-                        0x1B,
-                        0x28,
-                        0x42,  # ESC ( B
-                    ]
-                )
-            else:
-                jis_seq = bytes(
-                    [
-                        0x1B,
-                        0x24,
-                        0x28,
-                        0x51,  # ESC $ ( Q
-                        first_byte,
-                        second_byte,
-                        0x1B,
-                        0x28,
-                        0x42,  # ESC ( B
-                    ]
-                )
+        Args:
+            plane: JIS X 0213 plane (1 or 2)
+            first_byte: First byte of character
+            second_byte: Second byte of character
 
-            char = jis_seq.decode("iso2022_jp_2004").strip()
-            if char and not char.startswith("\x1b"):
-                self.kanji_map[arib_code] = char
-                return char
-        except UnicodeDecodeError:
-            pass
-
-        return "〓"
+        Returns:
+            JIS escape sequence bytes
+        """
+        if plane == 1:
+            return bytes(
+                [
+                    0x1B,
+                    0x24,
+                    0x42,  # ESC $ B
+                    first_byte,
+                    second_byte,
+                    0x1B,
+                    0x28,
+                    0x42,  # ESC ( B
+                ]
+            )
+        else:
+            return bytes(
+                [
+                    0x1B,
+                    0x24,
+                    0x28,
+                    0x51,  # ESC $ ( Q
+                    first_byte,
+                    second_byte,
+                    0x1B,
+                    0x28,
+                    0x42,  # ESC ( B
+                ]
+            )
 
     def _decode_single_byte(self, byte: int, char_set: CharacterClass) -> str:
-        """Decode a single byte according to the specified character set"""
+        """Decode a single byte character"""
+        if not (0x21 <= byte <= 0x7E):
+            return self.REPLACEMENT_CHAR
+
         match char_set:
             case CharacterClass.ALPHANUMERIC:
-                return self.alphanumeric_map.get(byte, "?")
+                return self.alphanumeric_map.get(byte, self.REPLACEMENT_CHAR)
             case CharacterClass.HIRAGANA:
-                return self.hiragana_map.get(byte, "?")
+                return self.hiragana_map.get(byte, self.REPLACEMENT_CHAR)
             case CharacterClass.KATAKANA:
-                return self.katakana_map.get(byte, "?")
+                return self.katakana_map.get(byte, self.REPLACEMENT_CHAR)
             case (
                 CharacterClass.MOSAIC_A
                 | CharacterClass.MOSAIC_B
                 | CharacterClass.MOSAIC_C
                 | CharacterClass.MOSAIC_D
             ):
-                return self.mosaic_maps[char_set].get(byte, "?")
-            case _ if CharacterClass.DRCS_0 <= char_set <= CharacterClass.DRCS_15:
-                drcs_map = self.drcs_maps.get(char_set, {})
-                return drcs_map.get(byte, "?")
+                return self.mosaic_maps[char_set].get(byte, self.REPLACEMENT_CHAR)
+            case _ if 0x40 <= char_set.value <= 0x4F:
+                drcs_map = self.state.drcs_maps.get(char_set, {})
+                return drcs_map.get(byte, self.REPLACEMENT_CHAR)
             case _:
-                return "?"
+                return self.REPLACEMENT_CHAR
 
-    # Control code handlers remain mostly the same, just updating type hints
+    def load_drcs(self, drcs_class: CharacterClass, drcs_data: dict[int, str]) -> None:
+        """Load DRCS pattern data for a specific character set
+
+        Args:
+            drcs_class: DRCS character class to load
+            drcs_data: Dictionary mapping character codes to pattern data
+        """
+        if CharacterClass.DRCS_0 <= drcs_class <= CharacterClass.DRCS_15:
+            self.state.drcs_maps[drcs_class] = drcs_data
+
     def _handle_apb(self, data: bytes, pos: int) -> int:
         """Handle Active Position Backward"""
-        x, y = self.position
-        self.position = (max(0, x - 1), y)
+        x, y = self.state.position
+        self.state.position = (max(0, x - 1), y)
         return pos
 
     def _handle_apf(self, data: bytes, pos: int) -> int:
         """Handle Active Position Forward"""
-        x, y = self.position
-        self.position = (x + 1, y)
+        x, y = self.state.position
+        self.state.position = (x + 1, y)
         return pos
 
     def _handle_apd(self, data: bytes, pos: int) -> int:
         """Handle Active Position Down"""
-        x, y = self.position
-        self.position = (x, y + 1)
+        x, y = self.state.position
+        self.state.position = (x, y + 1)
         return pos
 
     def _handle_apu(self, data: bytes, pos: int) -> int:
         """Handle Active Position Up"""
-        x, y = self.position
-        self.position = (x, max(0, y - 1))
+        x, y = self.state.position
+        self.state.position = (x, max(0, y - 1))
         return pos
 
     def _handle_apr(self, data: bytes, pos: int) -> int:
         """Handle Active Position Return"""
-        x, y = self.position
-        self.position = (0, y + 1)
+        _, y = self.state.position
+        self.state.position = (0, y + 1)
         return pos
 
     def _handle_papf(self, data: bytes, pos: int) -> int:
         """Handle Parameterized Active Position Forward"""
         if pos + 1 >= len(data):
             return pos
-        p1 = data[pos + 1]
-        if p1 >= 0x80:
-            p1 &= 0x7F
-        x, y = self.position
-        self.position = (x + p1, y)
+
+        p1 = data[pos + 1] & 0x7F  # Clear MSB if set
+        x, y = self.state.position
+        self.state.position = (x + p1, y)
         return pos + 1
 
     def _handle_aps(self, data: bytes, pos: int) -> int:
         """Handle Active Position Set"""
         if pos + 2 >= len(data):
             return pos
-        p1 = data[pos + 1]
-        p2 = data[pos + 2]
-        self.position = (p2, p1)
+
+        p1, p2 = data[pos + 1 : pos + 3]
+        self.state.position = (p2, p1)
         return pos + 2
 
     def _handle_cs(self, data: bytes, pos: int) -> int:
         """Handle Clear Screen"""
-        self.buffer = []
-        self.position = (0, 0)
+        self.state.buffer.clear()
+        self.state.position = (0, 0)
         return pos
 
     def _handle_esc(self, data: bytes, pos: int) -> int:
         """Handle Escape sequences"""
-        if pos + 1 >= len(data):
+        if pos + 2 >= len(data):
             return pos
 
         next_byte = data[pos + 1]
-        if next_byte == 0x24:  # 2-byte character set
-            if pos + 2 >= len(data):
-                return pos
-            set_byte = data[pos + 2]
-            self._handle_character_set_designation(set_byte, 2)
-            return pos + 2
-        elif next_byte == 0x28:  # G0 designation
-            if pos + 2 >= len(data):
-                return pos
-            set_byte = data[pos + 2]
-            self._handle_character_set_designation(set_byte, 0)
-            return pos + 2
-        elif next_byte == 0x29:  # G1 designation
-            if pos + 2 >= len(data):
-                return pos
-            set_byte = data[pos + 2]
-            self._handle_character_set_designation(set_byte, 1)
-            return pos + 2
-        elif next_byte == 0x2A:  # G2 designation
-            if pos + 2 >= len(data):
-                return pos
-            set_byte = data[pos + 2]
-            self._handle_character_set_designation(set_byte, 2)
-            return pos + 2
-        elif next_byte == 0x2B:  # G3 designation
-            if pos + 2 >= len(data):
-                return pos
-            set_byte = data[pos + 2]
-            self._handle_character_set_designation(set_byte, 3)
-            return pos + 2
-        elif next_byte == 0x6E:  # LS2
-            self.gl = self.g2
+        if next_byte not in (0x24, 0x28, 0x29, 0x2A, 0x2B):
             return pos + 1
-        elif next_byte == 0x6F:  # LS3
-            self.gl = self.g3
-            return pos + 1
-        elif next_byte == 0x7E:  # LS1R
-            self.gr = self.g1
-            return pos + 1
-        elif next_byte == 0x7D:  # LS2R
-            self.gr = self.g2
-            return pos + 1
-        elif next_byte == 0x7C:  # LS3R
-            self.gr = self.g3
-            return pos + 1
+
+        match next_byte:
+            case 0x24:  # 02/4
+                if pos + 2 >= len(data):
+                    return pos
+                self._handle_character_set_designation(data[pos + 2], 0)
+                return pos + 2
+
+            case 0x28 | 0x29 | 0x2A | 0x2B as byte:  # 02/8-02/11
+                g_set = byte - 0x28  # Calculate G-set number (0-3)
+                if pos + 2 >= len(data):
+                    return pos
+
+                if data[pos + 2] == 0x20:  # 02/0
+                    if pos + 3 >= len(data):
+                        return pos
+                    self._handle_character_set_designation(0x20, g_set)
+                    self._handle_character_set_designation(data[pos + 3], g_set)
+                    return pos + 3
+                else:
+                    self._handle_character_set_designation(data[pos + 2], g_set)
+                    return pos + 2
 
         return pos + 1
 
     def _handle_ls1(self, data: bytes, pos: int) -> int:
         """Handle Locking Shift 1"""
-        self.gl = self.g1
-        # Reset character set
-        self.single_shift = None
+        self.state.gl = self.state.g1
+        self.state.single_shift = None
         return pos
 
     def _handle_ls0(self, data: bytes, pos: int) -> int:
         """Handle Locking Shift 0"""
-        self.gl = self.g0
-        # Reset character set
-        self.single_shift = None
+        self.state.gl = self.state.g0
+        self.state.single_shift = None
         return pos
 
     def _handle_ss2(self, data: bytes, pos: int) -> int:
         """Handle Single Shift 2"""
-        self.single_shift = self.g2
+        self.state.single_shift = self.state.g2
         return pos
 
     def _handle_ss3(self, data: bytes, pos: int) -> int:
         """Handle Single Shift 3"""
-        self.single_shift = self.g3
+        self.state.single_shift = self.state.g3
         return pos
 
     def _handle_col(self, data: bytes, pos: int) -> int:
-        """Handle Color Control
-        Format: COL <color_params>
-        """
-        if pos + 1 >= len(data):
-            return pos
-        color_param = data[pos + 1]
-        # Set text color based on parameter
-        # self.current_color = color_param
-        return pos + 1
+        """Handle Color Control"""
+        return pos + 1 if pos + 1 < len(data) else pos
 
     def _handle_pol(self, data: bytes, pos: int) -> int:
-        """Handle Pattern Polarity Control
-        Format: POL <polarity>
-        """
-        if pos + 1 >= len(data):
-            return pos
-        polarity = data[pos + 1]
-        # Set pattern polarity (normal/reverse)
-        # self.pattern_polarity = polarity
-        return pos + 1
+        """Handle Pattern Polarity Control"""
+        return pos + 1 if pos + 1 < len(data) else pos
 
     def _handle_szx(self, data: bytes, pos: int) -> int:
-        """
-        Handle Set Character Size (SZX) control code
-        Format: SZX <size>
-        """
-        if pos + 1 >= len(data):
-            return pos
-
-        size_param = data[pos + 1]
-        return pos + 1
+        """Handle Set Character Size"""
+        return pos + 1 if pos + 1 < len(data) else pos
 
     def _handle_cdc(self, data: bytes, pos: int) -> int:
-        """Handle Character Deformation Control
-        Format: CDC <deformation>
-        """
-        if pos + 1 >= len(data):
-            return pos
-        deformation = data[pos + 1]
-        # Set character deformation (normal/deformed)
-        # self.char_deformation = deformation
-        return pos + 1
+        """Handle Character Deformation Control"""
+        return pos + 1 if pos + 1 < len(data) else pos
 
     def _handle_wmm(self, data: bytes, pos: int) -> int:
-        """
-        Handle Writing Mode Modification control code
-        Format: CDC <direction>
-        """
-        if pos + 1 >= len(data):
-            return pos
-
-        return pos + 1
+        """Handle Writing Mode Modification"""
+        return pos + 1 if pos + 1 < len(data) else pos
 
     def _handle_time(self, data: bytes, pos: int) -> int:
-        """Handle Time control code
-        Format: TIME <hour> <minute>
-        """
-        if pos + 2 >= len(data):
-            return pos
-        hour = data[pos + 1]
-        minute = data[pos + 2]
-        # Store time information if needed
-        # self.current_time = (hour, minute)
-        return pos + 2
+        """Handle Time Control"""
+        return pos + 2 if pos + 2 < len(data) else pos
 
     def _handle_macro(self, data: bytes, pos: int) -> int:
-        """Handle macro execution"""
-        if pos + 2 >= len(data):
+        """Handle macro execution with stack management"""
+        if pos + 1 >= len(data):
             return pos
 
         macro_id = data[pos + 1]
-        macro_control = data[pos + 2]
+        if macro_id not in self.macros:
+            return pos + 1
 
-        if macro_control == 0x40:  # 開始
-            self.macro_buffer = bytearray()
-            self.recording_macro = macro_id
-        elif macro_control == 0x41:  # 終了
-            if hasattr(self, "recording_macro") and self.recording_macro == macro_id:
-                self.macros[macro_id] = bytes(self.macro_buffer)
-                delattr(self, "recording_macro")
-        elif macro_control == 0x42:  # 実行
-            if macro_id in self.macros:
-                self.decode(self.macros[macro_id])
+        # Prevent excessive recursion
+        if len(self.state.macro_stack) >= self.MAX_MACRO_DEPTH:
+            return pos + 1
 
-        return pos + 2
+        # Save current state
+        saved_state = DecoderState(
+            g0=self.state.g0,
+            g1=self.state.g1,
+            g2=self.state.g2,
+            g3=self.state.g3,
+            single_shift=self.state.single_shift,
+            drcs_maps=self.state.drcs_maps.copy(),
+        )
+
+        try:
+            # Execute macro
+            self.state.macro_stack.append(self.macros[macro_id])
+            self.decode(self.macros[macro_id])
+        finally:
+            # Restore state
+            self.state = saved_state
+            self.state.macro_stack.pop()
+
+        return pos + 1
 
     def _handle_rpc(self, data: bytes, pos: int) -> int:
-        """Handle Repeat Character
-        Format: RPC <count>
-        """
+        """Handle Repeat Character"""
         if pos + 1 >= len(data):
             return pos
-        repeat_count = data[pos + 1]
 
-        # If there's a previous character, repeat it
-        if self.buffer and self.buffer[-1]:
-            last_char = self.buffer[-1][-1]
-            for _ in range(repeat_count - 1):  # -1 because one instance already exists
-                self.insert_character(last_char)
+        repeat_count = data[pos + 1]
+        if self.state.buffer and self.state.buffer[-1]:
+            last_char = self.state.buffer[-1][-1]
+            for _ in range(repeat_count - 1):
+                self._insert_character(last_char)
 
         return pos + 1
 
     def _handle_stl(self, data: bytes, pos: int) -> int:
-        """Handle Start Lining
-        Format: STL
-        """
-        # Start underlining or other line decorations
-        # self.lining_mode = True
+        """Handle Start Lining"""
         return pos
 
     def _handle_spl(self, data: bytes, pos: int) -> int:
-        """Handle Stop Lining
-        Format: SPL
-        """
-        # Stop underlining or other line decorations
-        # self.lining_mode = False
+        """Handle Stop Lining"""
         return pos
 
     def _handle_hlc(self, data: bytes, pos: int) -> int:
-        """Handle High-Level Control sequence
-        Format: HLC <classification> <instruction1> <instruction2>
-        """
-        if pos + 4 >= len(data):
+        """Handle High-Level Control sequence"""
+        if pos + 4 >= len(data) or data[pos] != 0x5B or data[pos + 4] != 0x4D:
             return pos
-
-        # Check if this is a valid HLC sequence (ESC [ ... M)
-        if data[pos] != 0x5B or data[pos + 4] != 0x4D:
-            return pos
-
-        p1 = data[pos + 1]  # Classification
-        p2 = data[pos + 2]  # Instruction 1
-        p3 = data[pos + 3]  # Instruction 2
-
         return pos + 4
 
     def _handle_csi(self, data: bytes, pos: int) -> int:
-        """Handle Control Sequence Introducer
-        Format: CSI <params> <command>
-        """
+        """Handle Control Sequence Introducer"""
         if pos + 1 >= len(data):
             return pos
 
-        # Skip CSI bytes (0x1B 0x5B)
         current_pos = pos + 2
         params: list[int] = []
 
-        # Parse parameters until command byte
         while current_pos < len(data):
             byte = data[current_pos]
-            if 0x30 <= byte <= 0x39:  # Digit
-                param = 0
-                while current_pos < len(data) and 0x30 <= data[current_pos] <= 0x39:
-                    param = param * 10 + (data[current_pos] - 0x30)
+
+            match byte:
+                case b if 0x30 <= b <= 0x39:  # Digit
+                    param = 0
+                    while current_pos < len(data) and 0x30 <= data[current_pos] <= 0x39:
+                        param = param * 10 + (data[current_pos] - 0x30)
+                        current_pos += 1
+                    params.append(param)
+
+                case 0x3B:  # Parameter separator
                     current_pos += 1
-                params.append(param)
-            elif byte == 0x3B:  # Parameter separator
-                current_pos += 1
-                continue
-            else:  # Command byte
-                command = byte
-                # Handle CSI command with params
-                self._handle_csi_command(command, params)
-                break
+
+                case _:  # Command byte
+                    self._handle_csi_command(byte, params)
+                    break
 
         return current_pos
 
     def _handle_csi_command(self, command: int, params: list[int]) -> None:
         """Handle specific CSI commands with parameters"""
-        # Implement specific CSI command handling here
-        pass
+        pass  # Implement specific CSI command handling as needed
 
     def _handle_flc(self, data: bytes, pos: int) -> int:
         """Handle Flashing Control
@@ -666,129 +1027,97 @@ class AribDecoder:
 
     def _handle_character_set_designation(self, set_byte: int, g_set: int) -> None:
         """Handle character set designation"""
-        char_class = None
-        set_byte &= 0x7F
+        if set_byte == 0x20:
+            self.state.expecting_drcs = True
+            return
 
-        match set_byte:
-            case 0x42:  # Kanji
-                char_class = CharacterClass.KANJI
-            case 0x4A:  # Alphanumeric
-                char_class = CharacterClass.ALPHANUMERIC
-            case 0x30:  # Hiragana
-                char_class = CharacterClass.HIRAGANA
-            case 0x31:  # Katakana
-                char_class = CharacterClass.KATAKANA
-            case 0x32:  # Mosaic A
-                char_class = CharacterClass.MOSAIC_A
-            case 0x33:  # Mosaic B
-                char_class = CharacterClass.MOSAIC_B
-            case 0x34:  # Mosaic C
-                char_class = CharacterClass.MOSAIC_C
-            case 0x35:  # Mosaic D
-                char_class = CharacterClass.MOSAIC_D
-            case _ if 0x40 <= set_byte <= 0x4F:  # DRCS
+        if self.state.expecting_drcs:
+            self.state.expecting_drcs = False
+            if 0x40 <= set_byte <= 0x4F:
                 char_class = CharacterClass(
-                    CharacterClass.DRCS_1.value + (set_byte - 0x40)
+                    CharacterClass.DRCS_0.value + (set_byte - 0x40)
                 )
+        else:
+            try:
+                char_class = CharacterClass(set_byte)
+            except ValueError:
+                return
 
-        if char_class is not None:
-            match g_set:
-                case 0:
-                    self.g0 = char_class
-                case 1:
-                    self.g1 = char_class
-                case 2:
-                    self.g2 = char_class
-                case 3:
-                    self.g3 = char_class
+        match g_set:
+            case 0:
+                self.state.g0 = char_class
+            case 1:
+                self.state.g1 = char_class
+            case 2:
+                self.state.g2 = char_class
+            case 3:
+                self.state.g3 = char_class
 
-    def load_drcs(
-        self, drcs_class: CharacterClass, drcs_data: dict[int, bytes]
-    ) -> None:
-        """
-        Load DRCS pattern data for a specific DRCS character set
-
-        Args:
-            drcs_class: The DRCS character class to load
-            drcs_data: Dictionary mapping character codes to pattern data
-        """
-        if CharacterClass.DRCS_0 <= drcs_class <= CharacterClass.DRCS_15:
-            self.drcs_maps[drcs_class] = drcs_data
-
-    def register_macro(self, macro_id: int, macro_data: bytes) -> None:
-        """
-        Register a new macro definition
-
-        Args:
-            macro_id: Identifier for the macro
-            macro_data: Bytes containing the macro definition
-        """
-        self.macros[macro_id] = macro_data
-
-    def insert_character(self, char: str) -> None:
+    def _insert_character(self, char: str) -> None:
         """Insert character at current position"""
-        x, y = self.position
-        while len(self.buffer) <= y:
-            self.buffer.append([])
-        line = self.buffer[y]
+        x, y = self.state.position
+
+        # Ensure buffer has enough rows
+        while len(self.state.buffer) <= y:
+            self.state.buffer.append([])
+
+        # Ensure current row has enough columns
+        line = self.state.buffer[y]
         while len(line) <= x:
             line.append(" ")
+
+        # Insert character and update position
         line[x] = char
-        self.position = (x + 1, y)
+        self.state.position = (x + 1, y)
 
-    @staticmethod
-    def is_control_code(byte: int) -> bool:
-        """Check if byte is a control code"""
-        return byte <= 0x20 or byte == 0x7F
-
-    @staticmethod
-    def is_gl_code(byte: int) -> bool:
-        """Check if byte is in GL area"""
-        return 0x21 <= byte <= 0x7E
-
-    @staticmethod
-    def is_gr_code(byte: int) -> bool:
-        """Check if byte is in GR area"""
-        return 0xA1 <= byte <= 0xFE
+    def reset(self) -> None:
+        """Reset decoder state to initial values"""
+        self.state = DecoderState()
 
 
 class AribString:
     """Helper class for building ARIB encoded strings"""
 
     def __init__(self) -> None:
-        self.data: bytearray = bytearray()
+        self.data = bytearray()
 
-    def add_control(self, code: ControlCode) -> None:
+    def add_control(self, code: ControlCode) -> Self:
         """Add control code"""
         self.data.append(code.value)
+        return self
 
-    def add_ascii(self, text: str) -> None:
+    def add_ascii(self, text: str) -> Self:
         """Add ASCII text"""
         self.data.extend(text.encode("ascii"))
+        return self
 
-    def set_g0(self, char_class: CharacterClass) -> None:
+    def set_g0(self, char_class: CharacterClass) -> Self:
         """Set G0 character set"""
         self.data.extend(
             [ControlCode.ESC.value, 0x28, self._get_character_set_byte(char_class)]
         )
+        return self
 
-    def set_g1(self, char_class: CharacterClass) -> None:
+    def set_g1(self, char_class: CharacterClass) -> Self:
         """Set G1 character set"""
         self.data.extend(
             [ControlCode.ESC.value, 0x29, self._get_character_set_byte(char_class)]
         )
+        return self
 
-    def set_g2(self, char_class: CharacterClass) -> None:
+    def set_g2(self, char_class: CharacterClass) -> Self:
         """Set G2 character set"""
         self.data.extend(
             [ControlCode.ESC.value, 0x2A, self._get_character_set_byte(char_class)]
         )
+        return self
 
-    def set_g3(self, char_class: CharacterClass) -> None:
+    def set_g3(self, char_class: CharacterClass) -> Self:
         """Set G3 character set"""
         self.data.extend(
             [ControlCode.ESC.value, 0x2B, self._get_character_set_byte(char_class)]
         )
+        return self
 
     @staticmethod
     def _get_character_set_byte(char_class: CharacterClass) -> int:
