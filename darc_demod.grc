@@ -9,7 +9,7 @@ options:
     description: Data Radio Channel (DARC) demodulator
     gen_cmake: 'On'
     gen_linking: dynamic
-    generate_options: qt_gui
+    generate_options: no_gui
     hier_block_src_path: '.:'
     id: darc_demod
     max_nouts: '0'
@@ -83,7 +83,7 @@ blocks:
     bus_structure: null
     coordinate: [344, 12.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: frequency
   id: variable
   parameters:
@@ -95,7 +95,7 @@ blocks:
     bus_structure: null
     coordinate: [400, 424.0]
     rotation: 0
-    state: disabled
+    state: enabled
 - name: gain
   id: variable_qtgui_range
   parameters:
@@ -108,7 +108,7 @@ blocks:
     start: '0.0'
     step: '0.1'
     stop: '64.0'
-    value: '32.0'
+    value: '12.5'
     widget: counter_slider
   states:
     bus_sink: false
@@ -116,7 +116,7 @@ blocks:
     bus_structure: null
     coordinate: [640, 96.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: samples_per_symbol
   id: variable
   parameters:
@@ -315,6 +315,363 @@ blocks:
     coordinate: [352, 236.0]
     rotation: 0
     state: enabled
+- name: osmosdr_source_0
+  id: osmosdr_source
+  parameters:
+    affinity: ''
+    alias: ''
+    ant0: ''
+    ant1: ''
+    ant10: ''
+    ant11: ''
+    ant12: ''
+    ant13: ''
+    ant14: ''
+    ant15: ''
+    ant16: ''
+    ant17: ''
+    ant18: ''
+    ant19: ''
+    ant2: ''
+    ant20: ''
+    ant21: ''
+    ant22: ''
+    ant23: ''
+    ant24: ''
+    ant25: ''
+    ant26: ''
+    ant27: ''
+    ant28: ''
+    ant29: ''
+    ant3: ''
+    ant30: ''
+    ant31: ''
+    ant4: ''
+    ant5: ''
+    ant6: ''
+    ant7: ''
+    ant8: ''
+    ant9: ''
+    args: '"rtl_tcp=192.168.1.144:1234,bias=1"'
+    bb_gain0: '20'
+    bb_gain1: '20'
+    bb_gain10: '20'
+    bb_gain11: '20'
+    bb_gain12: '20'
+    bb_gain13: '20'
+    bb_gain14: '20'
+    bb_gain15: '20'
+    bb_gain16: '20'
+    bb_gain17: '20'
+    bb_gain18: '20'
+    bb_gain19: '20'
+    bb_gain2: '20'
+    bb_gain20: '20'
+    bb_gain21: '20'
+    bb_gain22: '20'
+    bb_gain23: '20'
+    bb_gain24: '20'
+    bb_gain25: '20'
+    bb_gain26: '20'
+    bb_gain27: '20'
+    bb_gain28: '20'
+    bb_gain29: '20'
+    bb_gain3: '20'
+    bb_gain30: '20'
+    bb_gain31: '20'
+    bb_gain4: '20'
+    bb_gain5: '20'
+    bb_gain6: '20'
+    bb_gain7: '20'
+    bb_gain8: '20'
+    bb_gain9: '20'
+    bw0: '0'
+    bw1: '0'
+    bw10: '0'
+    bw11: '0'
+    bw12: '0'
+    bw13: '0'
+    bw14: '0'
+    bw15: '0'
+    bw16: '0'
+    bw17: '0'
+    bw18: '0'
+    bw19: '0'
+    bw2: '0'
+    bw20: '0'
+    bw21: '0'
+    bw22: '0'
+    bw23: '0'
+    bw24: '0'
+    bw25: '0'
+    bw26: '0'
+    bw27: '0'
+    bw28: '0'
+    bw29: '0'
+    bw3: '0'
+    bw30: '0'
+    bw31: '0'
+    bw4: '0'
+    bw5: '0'
+    bw6: '0'
+    bw7: '0'
+    bw8: '0'
+    bw9: '0'
+    clock_source0: ''
+    clock_source1: ''
+    clock_source2: ''
+    clock_source3: ''
+    clock_source4: ''
+    clock_source5: ''
+    clock_source6: ''
+    clock_source7: ''
+    comment: ''
+    corr0: '0'
+    corr1: '0'
+    corr10: '0'
+    corr11: '0'
+    corr12: '0'
+    corr13: '0'
+    corr14: '0'
+    corr15: '0'
+    corr16: '0'
+    corr17: '0'
+    corr18: '0'
+    corr19: '0'
+    corr2: '0'
+    corr20: '0'
+    corr21: '0'
+    corr22: '0'
+    corr23: '0'
+    corr24: '0'
+    corr25: '0'
+    corr26: '0'
+    corr27: '0'
+    corr28: '0'
+    corr29: '0'
+    corr3: '0'
+    corr30: '0'
+    corr31: '0'
+    corr4: '0'
+    corr5: '0'
+    corr6: '0'
+    corr7: '0'
+    corr8: '0'
+    corr9: '0'
+    dc_offset_mode0: '0'
+    dc_offset_mode1: '0'
+    dc_offset_mode10: '0'
+    dc_offset_mode11: '0'
+    dc_offset_mode12: '0'
+    dc_offset_mode13: '0'
+    dc_offset_mode14: '0'
+    dc_offset_mode15: '0'
+    dc_offset_mode16: '0'
+    dc_offset_mode17: '0'
+    dc_offset_mode18: '0'
+    dc_offset_mode19: '0'
+    dc_offset_mode2: '0'
+    dc_offset_mode20: '0'
+    dc_offset_mode21: '0'
+    dc_offset_mode22: '0'
+    dc_offset_mode23: '0'
+    dc_offset_mode24: '0'
+    dc_offset_mode25: '0'
+    dc_offset_mode26: '0'
+    dc_offset_mode27: '0'
+    dc_offset_mode28: '0'
+    dc_offset_mode29: '0'
+    dc_offset_mode3: '0'
+    dc_offset_mode30: '0'
+    dc_offset_mode31: '0'
+    dc_offset_mode4: '0'
+    dc_offset_mode5: '0'
+    dc_offset_mode6: '0'
+    dc_offset_mode7: '0'
+    dc_offset_mode8: '0'
+    dc_offset_mode9: '0'
+    freq0: frequency-0.25e6
+    freq1: 100e6
+    freq10: 100e6
+    freq11: 100e6
+    freq12: 100e6
+    freq13: 100e6
+    freq14: 100e6
+    freq15: 100e6
+    freq16: 100e6
+    freq17: 100e6
+    freq18: 100e6
+    freq19: 100e6
+    freq2: 100e6
+    freq20: 100e6
+    freq21: 100e6
+    freq22: 100e6
+    freq23: 100e6
+    freq24: 100e6
+    freq25: 100e6
+    freq26: 100e6
+    freq27: 100e6
+    freq28: 100e6
+    freq29: 100e6
+    freq3: 100e6
+    freq30: 100e6
+    freq31: 100e6
+    freq4: 100e6
+    freq5: 100e6
+    freq6: 100e6
+    freq7: 100e6
+    freq8: 100e6
+    freq9: 100e6
+    gain0: '10'
+    gain1: '10'
+    gain10: '10'
+    gain11: '10'
+    gain12: '10'
+    gain13: '10'
+    gain14: '10'
+    gain15: '10'
+    gain16: '10'
+    gain17: '10'
+    gain18: '10'
+    gain19: '10'
+    gain2: '10'
+    gain20: '10'
+    gain21: '10'
+    gain22: '10'
+    gain23: '10'
+    gain24: '10'
+    gain25: '10'
+    gain26: '10'
+    gain27: '10'
+    gain28: '10'
+    gain29: '10'
+    gain3: '10'
+    gain30: '10'
+    gain31: '10'
+    gain4: '10'
+    gain5: '10'
+    gain6: '10'
+    gain7: '10'
+    gain8: '10'
+    gain9: '10'
+    gain_mode0: 'False'
+    gain_mode1: 'False'
+    gain_mode10: 'False'
+    gain_mode11: 'False'
+    gain_mode12: 'False'
+    gain_mode13: 'False'
+    gain_mode14: 'False'
+    gain_mode15: 'False'
+    gain_mode16: 'False'
+    gain_mode17: 'False'
+    gain_mode18: 'False'
+    gain_mode19: 'False'
+    gain_mode2: 'False'
+    gain_mode20: 'False'
+    gain_mode21: 'False'
+    gain_mode22: 'False'
+    gain_mode23: 'False'
+    gain_mode24: 'False'
+    gain_mode25: 'False'
+    gain_mode26: 'False'
+    gain_mode27: 'False'
+    gain_mode28: 'False'
+    gain_mode29: 'False'
+    gain_mode3: 'False'
+    gain_mode30: 'False'
+    gain_mode31: 'False'
+    gain_mode4: 'False'
+    gain_mode5: 'False'
+    gain_mode6: 'False'
+    gain_mode7: 'False'
+    gain_mode8: 'False'
+    gain_mode9: 'False'
+    if_gain0: '20'
+    if_gain1: '20'
+    if_gain10: '20'
+    if_gain11: '20'
+    if_gain12: '20'
+    if_gain13: '20'
+    if_gain14: '20'
+    if_gain15: '20'
+    if_gain16: '20'
+    if_gain17: '20'
+    if_gain18: '20'
+    if_gain19: '20'
+    if_gain2: '20'
+    if_gain20: '20'
+    if_gain21: '20'
+    if_gain22: '20'
+    if_gain23: '20'
+    if_gain24: '20'
+    if_gain25: '20'
+    if_gain26: '20'
+    if_gain27: '20'
+    if_gain28: '20'
+    if_gain29: '20'
+    if_gain3: '20'
+    if_gain30: '20'
+    if_gain31: '20'
+    if_gain4: '20'
+    if_gain5: '20'
+    if_gain6: '20'
+    if_gain7: '20'
+    if_gain8: '20'
+    if_gain9: '20'
+    iq_balance_mode0: '0'
+    iq_balance_mode1: '0'
+    iq_balance_mode10: '0'
+    iq_balance_mode11: '0'
+    iq_balance_mode12: '0'
+    iq_balance_mode13: '0'
+    iq_balance_mode14: '0'
+    iq_balance_mode15: '0'
+    iq_balance_mode16: '0'
+    iq_balance_mode17: '0'
+    iq_balance_mode18: '0'
+    iq_balance_mode19: '0'
+    iq_balance_mode2: '0'
+    iq_balance_mode20: '0'
+    iq_balance_mode21: '0'
+    iq_balance_mode22: '0'
+    iq_balance_mode23: '0'
+    iq_balance_mode24: '0'
+    iq_balance_mode25: '0'
+    iq_balance_mode26: '0'
+    iq_balance_mode27: '0'
+    iq_balance_mode28: '0'
+    iq_balance_mode29: '0'
+    iq_balance_mode3: '0'
+    iq_balance_mode30: '0'
+    iq_balance_mode31: '0'
+    iq_balance_mode4: '0'
+    iq_balance_mode5: '0'
+    iq_balance_mode6: '0'
+    iq_balance_mode7: '0'
+    iq_balance_mode8: '0'
+    iq_balance_mode9: '0'
+    maxoutbuf: '0'
+    minoutbuf: '0'
+    nchan: '1'
+    num_mboards: '1'
+    sample_rate: source_sampling_rate
+    sync: sync
+    time_source0: ''
+    time_source1: ''
+    time_source2: ''
+    time_source3: ''
+    time_source4: ''
+    time_source5: ''
+    time_source6: ''
+    time_source7: ''
+    type: fc32
+  states:
+    bus_sink: false
+    bus_source: false
+    bus_structure: null
+    coordinate: [304, 540.0]
+    rotation: 0
+    state: enabled
 - name: qtgui_freq_sink_x_0
   id: qtgui_freq_sink_x
   parameters:
@@ -331,7 +688,7 @@ blocks:
     alpha8: '1.0'
     alpha9: '1.0'
     autoscale: 'False'
-    average: '1.0'
+    average: '0.2'
     axislabels: 'True'
     bw: wbfm_sampling_rate
     color1: '"blue"'
@@ -367,7 +724,7 @@ blocks:
     minoutbuf: '0'
     name: '""'
     nconnections: '1'
-    norm_window: 'False'
+    norm_window: 'True'
     showports: 'False'
     tr_chan: '0'
     tr_level: '0.0'
@@ -395,7 +752,7 @@ blocks:
     bus_structure: null
     coordinate: [880, 356.0]
     rotation: 0
-    state: enabled
+    state: disabled
 - name: qtgui_freq_sink_x_0_1
   id: qtgui_freq_sink_x
   parameters:
@@ -620,13 +977,13 @@ blocks:
     bus_structure: null
     coordinate: [632, 548.0]
     rotation: 180
-    state: enabled
+    state: disabled
 - name: rtlsdr_source_0
   id: rtlsdr_source
   parameters:
     affinity: ''
     alias: ''
-    ant0: ''
+    ant0: RX
     ant1: ''
     ant10: ''
     ant11: ''
@@ -658,8 +1015,8 @@ blocks:
     ant7: ''
     ant8: ''
     ant9: ''
-    args: '"rtl_tcp=127.0.0.1:1234,bias=1"'
-    bb_gain0: '0.0'
+    args: '"rtl_tcp=192.168.1.144:1234,bias=1"'
+    bb_gain0: '20.0'
     bb_gain1: '20'
     bb_gain10: '20'
     bb_gain11: '20'
@@ -828,7 +1185,7 @@ blocks:
     freq7: 100e6
     freq8: 100e6
     freq9: 100e6
-    gain0: gain
+    gain0: '125'
     gain1: '10'
     gain10: '10'
     gain11: '10'
@@ -860,7 +1217,7 @@ blocks:
     gain7: '10'
     gain8: '10'
     gain9: '10'
-    gain_mode0: 'True'
+    gain_mode0: 'False'
     gain_mode1: 'False'
     gain_mode10: 'False'
     gain_mode11: 'False'
@@ -892,7 +1249,7 @@ blocks:
     gain_mode7: 'False'
     gain_mode8: 'False'
     gain_mode9: 'False'
-    if_gain0: '0.0'
+    if_gain0: '20.0'
     if_gain1: '20'
     if_gain10: '20'
     if_gain11: '20'
@@ -977,363 +1334,6 @@ blocks:
     bus_structure: null
     coordinate: [96, 428.0]
     rotation: 0
-    state: enabled
-- name: rtlsdr_source_0_0
-  id: rtlsdr_source
-  parameters:
-    affinity: ''
-    alias: ''
-    ant0: ''
-    ant1: ''
-    ant10: ''
-    ant11: ''
-    ant12: ''
-    ant13: ''
-    ant14: ''
-    ant15: ''
-    ant16: ''
-    ant17: ''
-    ant18: ''
-    ant19: ''
-    ant2: ''
-    ant20: ''
-    ant21: ''
-    ant22: ''
-    ant23: ''
-    ant24: ''
-    ant25: ''
-    ant26: ''
-    ant27: ''
-    ant28: ''
-    ant29: ''
-    ant3: ''
-    ant30: ''
-    ant31: ''
-    ant4: ''
-    ant5: ''
-    ant6: ''
-    ant7: ''
-    ant8: ''
-    ant9: ''
-    args: '"bias=1"'
-    bb_gain0: '0.0'
-    bb_gain1: '20'
-    bb_gain10: '20'
-    bb_gain11: '20'
-    bb_gain12: '20'
-    bb_gain13: '20'
-    bb_gain14: '20'
-    bb_gain15: '20'
-    bb_gain16: '20'
-    bb_gain17: '20'
-    bb_gain18: '20'
-    bb_gain19: '20'
-    bb_gain2: '20'
-    bb_gain20: '20'
-    bb_gain21: '20'
-    bb_gain22: '20'
-    bb_gain23: '20'
-    bb_gain24: '20'
-    bb_gain25: '20'
-    bb_gain26: '20'
-    bb_gain27: '20'
-    bb_gain28: '20'
-    bb_gain29: '20'
-    bb_gain3: '20'
-    bb_gain30: '20'
-    bb_gain31: '20'
-    bb_gain4: '20'
-    bb_gain5: '20'
-    bb_gain6: '20'
-    bb_gain7: '20'
-    bb_gain8: '20'
-    bb_gain9: '20'
-    bw0: source_sampling_rate
-    bw1: '0'
-    bw10: '0'
-    bw11: '0'
-    bw12: '0'
-    bw13: '0'
-    bw14: '0'
-    bw15: '0'
-    bw16: '0'
-    bw17: '0'
-    bw18: '0'
-    bw19: '0'
-    bw2: '0'
-    bw20: '0'
-    bw21: '0'
-    bw22: '0'
-    bw23: '0'
-    bw24: '0'
-    bw25: '0'
-    bw26: '0'
-    bw27: '0'
-    bw28: '0'
-    bw29: '0'
-    bw3: '0'
-    bw30: '0'
-    bw31: '0'
-    bw4: '0'
-    bw5: '0'
-    bw6: '0'
-    bw7: '0'
-    bw8: '0'
-    bw9: '0'
-    clock_source0: ''
-    clock_source1: ''
-    clock_source2: ''
-    clock_source3: ''
-    clock_source4: ''
-    clock_source5: ''
-    clock_source6: ''
-    clock_source7: ''
-    comment: ''
-    corr0: '-4'
-    corr1: '0'
-    corr10: '0'
-    corr11: '0'
-    corr12: '0'
-    corr13: '0'
-    corr14: '0'
-    corr15: '0'
-    corr16: '0'
-    corr17: '0'
-    corr18: '0'
-    corr19: '0'
-    corr2: '0'
-    corr20: '0'
-    corr21: '0'
-    corr22: '0'
-    corr23: '0'
-    corr24: '0'
-    corr25: '0'
-    corr26: '0'
-    corr27: '0'
-    corr28: '0'
-    corr29: '0'
-    corr3: '0'
-    corr30: '0'
-    corr31: '0'
-    corr4: '0'
-    corr5: '0'
-    corr6: '0'
-    corr7: '0'
-    corr8: '0'
-    corr9: '0'
-    dc_offset_mode0: '0'
-    dc_offset_mode1: '0'
-    dc_offset_mode10: '0'
-    dc_offset_mode11: '0'
-    dc_offset_mode12: '0'
-    dc_offset_mode13: '0'
-    dc_offset_mode14: '0'
-    dc_offset_mode15: '0'
-    dc_offset_mode16: '0'
-    dc_offset_mode17: '0'
-    dc_offset_mode18: '0'
-    dc_offset_mode19: '0'
-    dc_offset_mode2: '0'
-    dc_offset_mode20: '0'
-    dc_offset_mode21: '0'
-    dc_offset_mode22: '0'
-    dc_offset_mode23: '0'
-    dc_offset_mode24: '0'
-    dc_offset_mode25: '0'
-    dc_offset_mode26: '0'
-    dc_offset_mode27: '0'
-    dc_offset_mode28: '0'
-    dc_offset_mode29: '0'
-    dc_offset_mode3: '0'
-    dc_offset_mode30: '0'
-    dc_offset_mode31: '0'
-    dc_offset_mode4: '0'
-    dc_offset_mode5: '0'
-    dc_offset_mode6: '0'
-    dc_offset_mode7: '0'
-    dc_offset_mode8: '0'
-    dc_offset_mode9: '0'
-    freq0: frequency-0.25e6
-    freq1: 100e6
-    freq10: 100e6
-    freq11: 100e6
-    freq12: 100e6
-    freq13: 100e6
-    freq14: 100e6
-    freq15: 100e6
-    freq16: 100e6
-    freq17: 100e6
-    freq18: 100e6
-    freq19: 100e6
-    freq2: 100e6
-    freq20: 100e6
-    freq21: 100e6
-    freq22: 100e6
-    freq23: 100e6
-    freq24: 100e6
-    freq25: 100e6
-    freq26: 100e6
-    freq27: 100e6
-    freq28: 100e6
-    freq29: 100e6
-    freq3: 100e6
-    freq30: 100e6
-    freq31: 100e6
-    freq4: 100e6
-    freq5: 100e6
-    freq6: 100e6
-    freq7: 100e6
-    freq8: 100e6
-    freq9: 100e6
-    gain0: gain
-    gain1: '10'
-    gain10: '10'
-    gain11: '10'
-    gain12: '10'
-    gain13: '10'
-    gain14: '10'
-    gain15: '10'
-    gain16: '10'
-    gain17: '10'
-    gain18: '10'
-    gain19: '10'
-    gain2: '10'
-    gain20: '10'
-    gain21: '10'
-    gain22: '10'
-    gain23: '10'
-    gain24: '10'
-    gain25: '10'
-    gain26: '10'
-    gain27: '10'
-    gain28: '10'
-    gain29: '10'
-    gain3: '10'
-    gain30: '10'
-    gain31: '10'
-    gain4: '10'
-    gain5: '10'
-    gain6: '10'
-    gain7: '10'
-    gain8: '10'
-    gain9: '10'
-    gain_mode0: 'False'
-    gain_mode1: 'False'
-    gain_mode10: 'False'
-    gain_mode11: 'False'
-    gain_mode12: 'False'
-    gain_mode13: 'False'
-    gain_mode14: 'False'
-    gain_mode15: 'False'
-    gain_mode16: 'False'
-    gain_mode17: 'False'
-    gain_mode18: 'False'
-    gain_mode19: 'False'
-    gain_mode2: 'False'
-    gain_mode20: 'False'
-    gain_mode21: 'False'
-    gain_mode22: 'False'
-    gain_mode23: 'False'
-    gain_mode24: 'False'
-    gain_mode25: 'False'
-    gain_mode26: 'False'
-    gain_mode27: 'False'
-    gain_mode28: 'False'
-    gain_mode29: 'False'
-    gain_mode3: 'False'
-    gain_mode30: 'False'
-    gain_mode31: 'False'
-    gain_mode4: 'False'
-    gain_mode5: 'False'
-    gain_mode6: 'False'
-    gain_mode7: 'False'
-    gain_mode8: 'False'
-    gain_mode9: 'False'
-    if_gain0: '0.0'
-    if_gain1: '20'
-    if_gain10: '20'
-    if_gain11: '20'
-    if_gain12: '20'
-    if_gain13: '20'
-    if_gain14: '20'
-    if_gain15: '20'
-    if_gain16: '20'
-    if_gain17: '20'
-    if_gain18: '20'
-    if_gain19: '20'
-    if_gain2: '20'
-    if_gain20: '20'
-    if_gain21: '20'
-    if_gain22: '20'
-    if_gain23: '20'
-    if_gain24: '20'
-    if_gain25: '20'
-    if_gain26: '20'
-    if_gain27: '20'
-    if_gain28: '20'
-    if_gain29: '20'
-    if_gain3: '20'
-    if_gain30: '20'
-    if_gain31: '20'
-    if_gain4: '20'
-    if_gain5: '20'
-    if_gain6: '20'
-    if_gain7: '20'
-    if_gain8: '20'
-    if_gain9: '20'
-    iq_balance_mode0: '0'
-    iq_balance_mode1: '0'
-    iq_balance_mode10: '0'
-    iq_balance_mode11: '0'
-    iq_balance_mode12: '0'
-    iq_balance_mode13: '0'
-    iq_balance_mode14: '0'
-    iq_balance_mode15: '0'
-    iq_balance_mode16: '0'
-    iq_balance_mode17: '0'
-    iq_balance_mode18: '0'
-    iq_balance_mode19: '0'
-    iq_balance_mode2: '0'
-    iq_balance_mode20: '0'
-    iq_balance_mode21: '0'
-    iq_balance_mode22: '0'
-    iq_balance_mode23: '0'
-    iq_balance_mode24: '0'
-    iq_balance_mode25: '0'
-    iq_balance_mode26: '0'
-    iq_balance_mode27: '0'
-    iq_balance_mode28: '0'
-    iq_balance_mode29: '0'
-    iq_balance_mode3: '0'
-    iq_balance_mode30: '0'
-    iq_balance_mode31: '0'
-    iq_balance_mode4: '0'
-    iq_balance_mode5: '0'
-    iq_balance_mode6: '0'
-    iq_balance_mode7: '0'
-    iq_balance_mode8: '0'
-    iq_balance_mode9: '0'
-    maxoutbuf: '0'
-    minoutbuf: '0'
-    nchan: '1'
-    num_mboards: '1'
-    sample_rate: source_sampling_rate
-    sync: sync
-    time_source0: ''
-    time_source1: ''
-    time_source2: ''
-    time_source3: ''
-    time_source4: ''
-    time_source5: ''
-    time_source6: ''
-    time_source7: ''
-    type: fc32
-  states:
-    bus_sink: false
-    bus_source: false
-    bus_structure: null
-    coordinate: [320, 444.0]
-    rotation: 0
     state: disabled
 - name: soapy_hackrf_source_0
   id: soapy_hackrf_source
@@ -1368,9 +1368,9 @@ blocks:
     bufflen: '16384'
     center_freq: frequency-0.25e6
     comment: ''
-    dev_args: '"bias=1"'
-    freq_correction: '-4'
-    gain: '0'
+    dev_args: ''
+    freq_correction: '0'
+    gain: gain
     maxoutbuf: '0'
     minoutbuf: '0'
     samp_rate: source_sampling_rate
@@ -1392,8 +1392,8 @@ connections:
 - [freq_xlating_fir_filter_xxx_0, '0', qtgui_freq_sink_x_0_1_0, '0']
 - [freq_xlating_fir_filter_xxx_0_0, '0', analog_quadrature_demod_cf_0, '0']
 - [freq_xlating_fir_filter_xxx_0_0, '0', qtgui_freq_sink_x_0_1, '0']
+- [osmosdr_source_0, '0', freq_xlating_fir_filter_xxx_0_0, '0']
 - [rtlsdr_source_0, '0', freq_xlating_fir_filter_xxx_0_0, '0']
-- [rtlsdr_source_0_0, '0', freq_xlating_fir_filter_xxx_0_0, '0']
 - [soapy_hackrf_source_0, '0', freq_xlating_fir_filter_xxx_0_0, '0']
 - [soapy_rtlsdr_source_0, '0', freq_xlating_fir_filter_xxx_0_0, '0']
 
