@@ -1,11 +1,11 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import IntEnum
 from typing import Any, Final, TypeAlias, Self
 import unicodedata
 
 
-class CharacterClass(Enum):
+class CharacterClass(IntEnum):
     KANJI = 0x42
     ALPHANUMERIC = 0x4A
     HIRAGANA = 0x30
@@ -33,7 +33,7 @@ class CharacterClass(Enum):
     DRCS_15 = 0x4F
 
 
-class ControlCode(Enum):
+class ControlCode(IntEnum):
     # C0
     NUL = 0x00
     SOH = 0x01
@@ -1031,6 +1031,7 @@ class AribDecoder:
             self.state.expecting_drcs = True
             return
 
+        char_class = CharacterClass.KANJI
         if self.state.expecting_drcs:
             self.state.expecting_drcs = False
             if 0x40 <= set_byte <= 0x4F:

@@ -65,8 +65,7 @@ class L5DataDecoder:
         data_header = read_data_header(stream)
 
         if data_header is None:
-            self._logger.warning("Failed to read data header")
-            return None, []
+            raise ValueError("Failed to read data header")
 
         data_units = self._read_data_units(stream)
         return data_header, data_units

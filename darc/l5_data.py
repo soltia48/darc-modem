@@ -4,16 +4,13 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import IntEnum
 from logging import getLogger
-from typing import ClassVar, Final, Self, TypeAlias, TypeGuard
+from typing import ClassVar, Final, Self, TypeGuard
 
 from bitstring import BitStream, Bits, pack
 
 # Constants
 INFORMATION_SEPARATOR: Final[int] = 0x1E
 DATA_UNIT_SEPARATOR: Final[int] = 0x1F
-
-# Type aliases
-Buffer: TypeAlias = Bits
 
 
 class DataHeaderParameter(IntEnum):
@@ -36,13 +33,13 @@ class DataHeaderBase(ABC):
     _logger: ClassVar = getLogger(__name__)
 
     @abstractmethod
-    def to_buffer(self) -> Buffer:
+    def to_buffer(self) -> Bits:
         """Convert data header to binary buffer."""
 
     @classmethod
     def peek_data_header_parameter(cls, stream: BitStream) -> int:
         """Peek next data header parameter without consuming stream."""
-        buffer = stream.peek("bytes2")
+        buffer: bytes = stream.peek("bytes:2")  # type: ignore
         return buffer[1]
 
     @classmethod
@@ -84,7 +81,7 @@ class ProgramDataHeaderA(DataHeaderBase):
     information_type: int
     display_format: int
 
-    def to_buffer(self) -> Buffer:
+    def to_buffer(self) -> Bits:
         buffer = pack(
             """uint8, uint8,
                uint8, uint2, uint6, uint8, uint4, uint4""",
@@ -97,7 +94,7 @@ class ProgramDataHeaderA(DataHeaderBase):
             self.information_type,
             self.display_format,
         )
-        return Buffer(buffer)
+        return Bits(buffer)
 
     @classmethod
     def data_header_parameter(cls) -> DataHeaderParameter:
@@ -134,7 +131,7 @@ class ProgramDataHeaderB(DataHeaderBase):
     map_position_x: int
     map_position_y: int
 
-    def to_buffer(self) -> Buffer:
+    def to_buffer(self) -> Bits:
         buffer = pack(
             """uint8, uint8,
                uint8, uint2, uint6, uint8, uint4, uint4,
@@ -156,7 +153,7 @@ class ProgramDataHeaderB(DataHeaderBase):
             self.map_position_x & 0x0F,
             self.map_position_y & 0x0F,
         )
-        return Buffer(buffer)
+        return Bits(buffer)
 
     @classmethod
     def data_header_parameter(cls) -> DataHeaderParameter:
@@ -213,7 +210,7 @@ class PageDataHeaderA(DataHeaderBase):
     header_raster_color: int
     raster_color: int
 
-    def to_buffer(self) -> Buffer:
+    def to_buffer(self) -> Bits:
         buffer = pack(
             """uint8, uint8,
                uint8, uint2, uint6, uint8, uint4, uint4,
@@ -229,7 +226,7 @@ class PageDataHeaderA(DataHeaderBase):
             self.header_raster_color,
             self.raster_color,
         )
-        return Buffer(buffer)
+        return Bits(buffer)
 
     @classmethod
     def data_header_parameter(cls) -> DataHeaderParameter:
@@ -277,7 +274,7 @@ class PageDataHeaderB(DataHeaderBase):
     link_type: int
     reference_link_number: int
 
-    def to_buffer(self) -> Buffer:
+    def to_buffer(self) -> Bits:
         buffer = pack(
             """uint8, uint8,
                uint8, uint2, uint6, uint8, uint4, uint4,
@@ -311,7 +308,7 @@ class PageDataHeaderB(DataHeaderBase):
             self.reference_link_number >> 8,
             self.reference_link_number & 0xFF,
         )
-        return Buffer(buffer)
+        return Bits(buffer)
 
     @classmethod
     def data_header_parameter(cls) -> DataHeaderParameter:
@@ -388,7 +385,7 @@ class ProgramCommonMacroDataHeaderA(DataHeaderBase):
     program_common_macro_set: int
     program_common_macro_set_code: int
 
-    def to_buffer(self) -> Buffer:
+    def to_buffer(self) -> Bits:
         buffer = pack(
             """uint8, uint8,
                uint8, uint1, uint3, uint4, uint8, uint8, uint8""",
@@ -402,7 +399,7 @@ class ProgramCommonMacroDataHeaderA(DataHeaderBase):
             self.program_common_macro_set_code >> 8,
             self.program_common_macro_set_code & 0xFF,
         )
-        return Buffer(buffer)
+        return Bits(buffer)
 
     @classmethod
     def data_header_parameter(cls) -> DataHeaderParameter:
@@ -454,7 +451,7 @@ class ProgramCommonMacroDataHeaderB(DataHeaderBase):
     link_type: int
     reference_link_number: int
 
-    def to_buffer(self) -> Buffer:
+    def to_buffer(self) -> Bits:
         buffer = pack(
             """uint8, uint8,
                uint8, uint1, uint3, uint4, uint8, uint8, uint8,
@@ -482,7 +479,7 @@ class ProgramCommonMacroDataHeaderB(DataHeaderBase):
             self.reference_link_number >> 8,
             self.reference_link_number & 0xFF,
         )
-        return Buffer(buffer)
+        return Bits(buffer)
 
     @classmethod
     def data_header_parameter(cls) -> DataHeaderParameter:
@@ -540,13 +537,13 @@ class ProgramCommonMacroDataHeaderB(DataHeaderBase):
 class ContinueDataHeader(DataHeaderBase):
     """Continue data header with no additional fields."""
 
-    def to_buffer(self) -> Buffer:
+    def to_buffer(self) -> Bits:
         buffer = pack(
             "uint8, uint8",
             INFORMATION_SEPARATOR,
             self.data_header_parameter(),
         )
-        return Buffer(buffer)
+        return Bits(buffer)
 
     @classmethod
     def data_header_parameter(cls) -> DataHeaderParameter:
@@ -565,7 +562,7 @@ class ProgramIndexDataHeader(DataHeaderBase):
     undefined_0: int
     index_control: int
 
-    def to_buffer(self) -> Buffer:
+    def to_buffer(self) -> Bits:
         buffer = pack(
             """uint8, uint8,
                uint6, uint2""",
@@ -574,7 +571,7 @@ class ProgramIndexDataHeader(DataHeaderBase):
             self.undefined_0,
             self.index_control,
         )
-        return Buffer(buffer)
+        return Bits(buffer)
 
     @classmethod
     def data_header_parameter(cls) -> DataHeaderParameter:
@@ -604,7 +601,7 @@ class GenericDataUnit:
         """Type guard to check if data is a valid GenericDataUnit."""
         return isinstance(data, cls)
 
-    def to_buffer(self) -> Buffer:
+    def to_buffer(self) -> Bits:
         """Convert data unit to binary buffer."""
         data_length = len(self.data_unit_data)
         buffer = pack(
@@ -616,7 +613,7 @@ class GenericDataUnit:
             data_length & 0xFF,
             self.data_unit_data,
         )
-        return Buffer(buffer)
+        return Bits(buffer)
 
     @classmethod
     def read(cls, stream: BitStream) -> Self | bytes:

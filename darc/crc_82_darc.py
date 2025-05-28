@@ -1,11 +1,7 @@
 from logging import getLogger
-from typing import Final, TypeAlias
+from typing import Final
 
 from bitstring import Bits
-
-CrcValue: TypeAlias = int
-BitCount: TypeAlias = int
-Syndrome: TypeAlias = int
 
 CRC_POLYNOMIAL: Final[int] = 0x0308C0111011401440411
 CRC_MASK: Final[int] = 0x3FFFFFFFFFFFFFFFFFFFF
@@ -38,7 +34,7 @@ def _generate_crc_82_darc_table() -> list[int]:
 CRC_82_DARC_TABLE: Final[list[int]] = _generate_crc_82_darc_table()
 
 
-def _crc_82_darc_table_driven(message: bytes | Bits) -> CrcValue:
+def _crc_82_darc_table_driven(message: bytes) -> int:
     """Calculate CRC-82/DARC using table-driven algorithm.
 
     Args:
@@ -49,10 +45,7 @@ def _crc_82_darc_table_driven(message: bytes | Bits) -> CrcValue:
     """
     crc = INITIAL_CRC
 
-    # Convert Bits to bytes if necessary
-    data = message.bytes if isinstance(message, Bits) else message
-
-    for value in data:
+    for value in message:
         table_index = ((crc >> 74) ^ value) & 0xFF
         crc = CRC_82_DARC_TABLE[table_index] ^ (crc << 8)
         crc &= CRC_MASK
@@ -60,7 +53,7 @@ def _crc_82_darc_table_driven(message: bytes | Bits) -> CrcValue:
     return crc
 
 
-def _crc_82_darc_bit_by_bit(message: bytes | Bits, bits: BitCount) -> CrcValue:
+def _crc_82_darc_bit_by_bit(message: bytes, bits: int) -> int:
     """Calculate CRC-82/DARC using bit-by-bit algorithm.
 
     Args:
@@ -71,9 +64,8 @@ def _crc_82_darc_bit_by_bit(message: bytes | Bits, bits: BitCount) -> CrcValue:
         Calculated CRC value
     """
     crc = INITIAL_CRC
-    data = message.bytes if isinstance(message, Bits) else message
 
-    for value in data:
+    for value in message:
         for i in range(8):
             if bits <= 0:
                 break
@@ -85,7 +77,7 @@ def _crc_82_darc_bit_by_bit(message: bytes | Bits, bits: BitCount) -> CrcValue:
     return crc
 
 
-def crc_82_darc(message: bytes | Bits, *, bits: BitCount | None = None) -> CrcValue:
+def crc_82_darc(message: bytes, *, bits: int | None = None) -> int:
     """Calculate CRC-82/DARC.
 
     Args:
@@ -103,9 +95,7 @@ def crc_82_darc(message: bytes | Bits, *, bits: BitCount | None = None) -> CrcVa
     )
 
 
-def _generate_bitflip_syndrome_map(
-    length: int, error_width: int
-) -> dict[Syndrome, Bits]:
+def _generate_bitflip_syndrome_map(length: int, error_width: int) -> dict[int, Bits]:
     """Generate bitflip syndrome map.
 
     Args:
@@ -115,7 +105,7 @@ def _generate_bitflip_syndrome_map(
     Returns:
         Dictionary mapping syndromes to error vectors
     """
-    bitflip_syndrome_map: dict[Syndrome, Bits] = {}
+    bitflip_syndrome_map: dict[int, Bits] = {}
 
     for i in range(1, error_width + 1):
         error_base = (1 << (i - 1)) | 1
@@ -127,14 +117,14 @@ def _generate_bitflip_syndrome_map(
             for k in range(length - i):
                 error = error_with_counter << k
                 error_vector = Bits(uint=error, length=length)
-                syndrome = crc_82_darc(error_vector, bits=length)
+                syndrome = crc_82_darc(error_vector.bytes, bits=length)
                 bitflip_syndrome_map[syndrome] = error_vector
 
     return bitflip_syndrome_map
 
 
 # Pre-computed syndrome map for DSCC (272,190)
-PARITY_BITFLIP_SYNDROME_MAP_DSCC_272_190: Final[dict[Syndrome, Bits]] = (
+PARITY_BITFLIP_SYNDROME_MAP_DSCC_272_190: Final[dict[int, Bits]] = (
     _generate_bitflip_syndrome_map(272, 8)
 )
 
@@ -154,7 +144,7 @@ def correct_error_dscc_272_190(buffer: Bits, raise_error=True) -> Bits | None:
     if len(buffer) != 272:
         raise ValueError("Buffer length must be 272 bits")
 
-    syndrome = crc_82_darc(buffer, bits=272)
+    syndrome = crc_82_darc(buffer.bytes, bits=272)
     if syndrome == 0:
         return buffer
 

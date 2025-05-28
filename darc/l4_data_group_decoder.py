@@ -9,12 +9,9 @@ from .l3_data import L3DataPacketServiceIdentificationCode as ServiceID
 from .l3_data import L3DataPacket
 from .l4_data import L4DataGroup1, L4DataGroup2
 
-DataPacket: TypeAlias = L3DataPacket
 DataGroup: TypeAlias = L4DataGroup1 | L4DataGroup2
 GroupKey: TypeAlias = tuple[ServiceID, int]
 GroupBuffer: TypeAlias = MutableMapping[GroupKey, Bits]
-DataPackets: TypeAlias = Sequence[DataPacket]
-DataGroups: TypeAlias = list[DataGroup]
 
 
 @dataclass(frozen=True)
@@ -45,7 +42,7 @@ class L4DataGroupDecoder:
         self._logger = getLogger(__name__)
         self._group_buffers: GroupBuffer = {}
 
-    def _get_group_key(self, packet: DataPacket) -> GroupKey:
+    def _get_group_key(self, packet: L3DataPacket) -> GroupKey:
         """Create a unique key for a data group.
 
         Args:
@@ -64,7 +61,7 @@ class L4DataGroupDecoder:
         """
         self._logger.debug("First Data Packet not found. %s", context)
 
-    def _create_data_group(self, packet: DataPacket, buffer: Bits) -> DataGroup:
+    def _create_data_group(self, packet: L3DataPacket, buffer: Bits) -> DataGroup:
         """Create appropriate data group from buffer.
 
         Args:
@@ -82,7 +79,9 @@ class L4DataGroupDecoder:
             packet.service_id, packet.data_group_number, buffer
         )
 
-    def push_data_packets(self, data_packets: DataPackets) -> DataGroups:
+    def push_data_packets(
+        self, data_packets: Sequence[L3DataPacket]
+    ) -> list[DataGroup]:
         """Process L3 data packets and assemble L4 data groups.
 
         Args:
@@ -91,7 +90,7 @@ class L4DataGroupDecoder:
         Returns:
             List of assembled L4 data groups
         """
-        data_groups: DataGroups = []
+        data_groups: list[DataGroup] = []
 
         for packet in data_packets:
             # Create group key and get existing buffer if any

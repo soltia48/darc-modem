@@ -1,14 +1,12 @@
 from dataclasses import dataclass
 from logging import getLogger
-from typing import Self, Final, TypeAlias, ClassVar
+from typing import Self, Final, ClassVar
 
 from bitstring import Bits, pack
 
 from .bit_operations import reverse_bits
 from .crc_16_darc import crc_16_darc
 from .l3_data import L3DataPacketServiceIdentificationCode as ServiceID
-
-Buffer: TypeAlias = Bits
 
 START_OF_HEADING: Final[int] = 0x01
 MIN_BUFFER_SIZE: Final[int] = 48
@@ -39,7 +37,7 @@ class L4DataGroup1:
     service_id: ServiceID
     data_group_number: int
     data_group_link: int
-    data_group_data: Buffer
+    data_group_data: Bits
     end_of_data_group: int
     crc: int
 
@@ -52,7 +50,7 @@ class L4DataGroup1:
         if not 0 <= self.crc <= 0xFFFF:
             raise ValueError("CRC must be 16-bit value")
 
-    def to_buffer(self) -> Buffer:
+    def to_buffer(self) -> Bits:
         """Convert data group to binary buffer.
 
         Returns:
@@ -79,7 +77,7 @@ class L4DataGroup1:
             buffer[start : start + 8] = buffer[start : start + 8][::-1]
         buffer[-24:-16] = buffer[-24:-16][::-1]
 
-        return Buffer(buffer)
+        return Bits(buffer)
 
     def is_crc_valid(self) -> bool:
         """Check if CRC is valid for this data group.
@@ -95,7 +93,7 @@ class L4DataGroup1:
         cls,
         service_id: ServiceID,
         data_group_number: int,
-        buffer: Buffer,
+        buffer: Bits,
     ) -> Self:
         """Create data group from binary buffer.
 
@@ -111,7 +109,7 @@ class L4DataGroup1:
             ValueError: If buffer is too small or format is invalid
         """
         if len(buffer) < MIN_BUFFER_SIZE:
-            raise ValueError(f"Buffer length must be >= {MIN_BUFFER_SIZE}")
+            raise ValueError(f"Bits length must be >= {MIN_BUFFER_SIZE}")
 
         # Extract header fields (with bit reversal)
         start_of_heading = buffer[0:8][::-1].uint
@@ -124,7 +122,7 @@ class L4DataGroup1:
         # Extract data and validation fields
         data_start = 24
         data_end = data_start + 8 * data_size
-        data = Buffer(reverse_bits(buffer[data_start:data_end].bytes))
+        data = Bits(reverse_bits(buffer[data_start:data_end].bytes))
         end_mark = buffer[-24:-16][::-1].uint
         crc = buffer[-16:].uint
 
@@ -153,7 +151,7 @@ class L4DataGroup2:
 
     service_id: ServiceID
     data_group_number: int
-    segments_data: Buffer
+    segments_data: Bits
     crc: int | None = None
 
     def has_crc(self) -> bool:
@@ -164,7 +162,7 @@ class L4DataGroup2:
         """
         return len(self.segments_data) > COMP2_CRC_THRESHOLD
 
-    def to_buffer(self) -> Buffer:
+    def to_buffer(self) -> Bits:
         """Convert data group to binary buffer.
 
         Returns:
@@ -197,7 +195,7 @@ class L4DataGroup2:
         cls,
         service_id: ServiceID,
         data_group_number: int,
-        buffer: Buffer,
+        buffer: Bits,
     ) -> Self:
         """Create data group from binary buffer.
 
@@ -210,10 +208,10 @@ class L4DataGroup2:
             New data group instance
         """
         if len(buffer) > COMP2_CRC_THRESHOLD:
-            data = Buffer(reverse_bits(buffer[:-CRC_SIZE].bytes))
+            data = Bits(reverse_bits(buffer[:-CRC_SIZE].bytes))
             crc = buffer[-CRC_SIZE:].uint
         else:
-            data = Buffer(reverse_bits(buffer.bytes))
+            data = Bits(reverse_bits(buffer.bytes))
             crc = None
 
         return cls(

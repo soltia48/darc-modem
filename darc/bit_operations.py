@@ -1,4 +1,3 @@
-from collections.abc import Iterable
 from typing import Final
 
 NIBBLE_HIGH: Final[int] = 0xF0
@@ -9,7 +8,7 @@ ODD_BITS: Final[int] = 0xAA
 EVEN_BITS: Final[int] = 0x55
 
 
-def reverse_bits(buffer: bytes | bytearray | Iterable[int]) -> bytes:
+def reverse_bits(buffer: bytes | bytearray) -> bytes:
     """Reverse the bits in each byte of the input buffer.
 
     This function reverses the bits in each byte using an optimized algorithm

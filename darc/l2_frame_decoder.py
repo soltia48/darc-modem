@@ -1,5 +1,5 @@
 from logging import getLogger
-from typing import Final, TypeAlias, Optional
+from typing import Final, TypeAlias
 
 from .l2_data import (
     L2BlockIdentificationCode as BIC,
@@ -9,7 +9,6 @@ from .l2_data import (
 )
 
 Block: TypeAlias = L2InformationBlock | L2ParityBlock
-BlockSequence: TypeAlias = list[Block]
 
 FRAME_SIZE: Final[int] = 272
 BIC1_START: Final[int] = 1
@@ -28,7 +27,7 @@ class L2FrameDecoder:
     def __init__(self) -> None:
         """Initialize a new frame decoder instance."""
         self._logger = getLogger(__name__)
-        self._block_buffer: BlockSequence = []
+        self._block_buffer: list[Block] = []
 
     def reset(self) -> None:
         """Reset the decoder state."""
@@ -97,7 +96,7 @@ class L2FrameDecoder:
 
         return True
 
-    def push_block(self, block: Block) -> Optional[L2Frame]:
+    def push_block(self, block: Block) -> L2Frame | None:
         """Process a new block and attempt to construct a frame.
 
         Args:

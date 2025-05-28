@@ -123,9 +123,11 @@ class L2BlockDecoder:
         # Block completion check
         if len(self.__data_buffer) == BLOCK_SIZE:
             block_id = self.__detected_bic()
+            if block_id is None:
+                return None
             self.__logger.debug(
                 "Block data collected. block_id=%s data_buffer=%s",
-                block_id.name if block_id else "UNKNOWN",
+                block_id.name,
                 self.__data_buffer,
             )
 

@@ -1,10 +1,4 @@
-from typing import Final, TypeAlias
-
-from bitstring import Bits
-
-CrcValue: TypeAlias = int
-BitCount: TypeAlias = int
-Message: TypeAlias = bytes | Bits
+from typing import Final
 
 CRC_POLYNOMIAL: Final[int] = 0x1021
 CRC_MASK: Final[int] = 0xFFFF
@@ -36,7 +30,7 @@ def _generate_crc_16_darc_table() -> list[int]:
 CRC_16_DARC_TABLE: Final[list[int]] = _generate_crc_16_darc_table()
 
 
-def _crc_16_darc_table_driven(message: Message) -> CrcValue:
+def _crc_16_darc_table_driven(message: bytes) -> int:
     """Calculate CRC-16/DARC using table-driven algorithm.
 
     Args:
@@ -46,9 +40,8 @@ def _crc_16_darc_table_driven(message: Message) -> CrcValue:
         Calculated CRC value
     """
     crc = INITIAL_CRC
-    data = message.bytes if isinstance(message, Bits) else message
 
-    for value in data:
+    for value in message:
         table_index = ((crc >> 8) ^ value) & BYTE_MASK
         crc = CRC_16_DARC_TABLE[table_index] ^ (crc << 8)
         crc &= CRC_MASK
@@ -56,7 +49,7 @@ def _crc_16_darc_table_driven(message: Message) -> CrcValue:
     return crc
 
 
-def _crc_16_darc_bit_by_bit(message: Message, bits: BitCount) -> CrcValue:
+def _crc_16_darc_bit_by_bit(message: bytes, bits: int) -> int:
     """Calculate CRC-16/DARC using bit-by-bit algorithm.
 
     Args:
@@ -67,9 +60,8 @@ def _crc_16_darc_bit_by_bit(message: Message, bits: BitCount) -> CrcValue:
         Calculated CRC value
     """
     crc = INITIAL_CRC
-    data = message.bytes if isinstance(message, Bits) else message
 
-    for value in data:
+    for value in message:
         for i in range(8):
             if bits <= 0:
                 break
@@ -81,7 +73,7 @@ def _crc_16_darc_bit_by_bit(message: Message, bits: BitCount) -> CrcValue:
     return crc
 
 
-def crc_16_darc(message: Message, *, bits: BitCount | None = None) -> CrcValue:
+def crc_16_darc(message: bytes, *, bits: int | None = None) -> int:
     """Calculate CRC-16/DARC checksum.
 
     Args:

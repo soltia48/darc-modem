@@ -1,11 +1,9 @@
 from dataclasses import dataclass
-from enum import IntEnum, verify
+from enum import IntEnum
 from functools import cached_property
-from typing import Self, Final, TypeAlias
+from typing import Self, Final
 
 from bitstring import Bits
-
-Buffer: TypeAlias = Bits | bytes
 
 PACKET_SIZE: Final[int] = 176
 SERVICE_ID_SIZE: Final[int] = 4
@@ -22,7 +20,6 @@ COMP2_GROUP_SIZE: Final[int] = 4
 COMP2_PACKET_SIZE: Final[int] = 4
 
 
-@verify(lambda x: 0x0 <= x <= 0xF)
 class L3DataPacketServiceIdentificationCode(IntEnum):
     """Layer 3 Data Packet Service Identification Codes.
 
@@ -124,7 +121,7 @@ class L3DataPacket:
         )
 
     @classmethod
-    def from_buffer(cls, buffer: Buffer) -> Self:
+    def from_buffer(cls, buffer: Bits) -> Self:
         """Create packet from binary buffer.
 
         Args:
@@ -144,20 +141,20 @@ class L3DataPacket:
 
         # Extract header fields (reverse bits as needed)
         service_id = L3DataPacketServiceIdentificationCode(buffer[0:4][::-1].uint)
-        decode_id_flag = buffer[4:5].uint
-        end_of_information_flag = buffer[5:6].uint
-        update_flag = buffer[6:8][::-1].uint
+        decode_id_flag: int = buffer[4:5].uint
+        end_of_information_flag: int = buffer[5:6].uint
+        update_flag: int = buffer[6:8][::-1].uint
 
         # Handle different compositions
         if service_id == L3DataPacketServiceIdentificationCode.ADDITIONAL_INFORMATION:
             # Composition 2
-            data_group_number = buffer[8:12][::-1].uint
-            data_packet_number = buffer[12:16][::-1].uint
+            data_group_number: int = buffer[8:12][::-1].uint
+            data_packet_number: int = buffer[12:16][::-1].uint
             data_block = buffer[16:PACKET_SIZE]
         else:
             # Composition 1
-            data_group_number = buffer[8:22][::-1].uint
-            data_packet_number = buffer[22:32][::-1].uint
+            data_group_number: int = buffer[8:22][::-1].uint
+            data_packet_number: int = buffer[22:32][::-1].uint
             data_block = buffer[32:PACKET_SIZE]
 
         return cls(
