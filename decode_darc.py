@@ -261,12 +261,13 @@ def process_stdin(pipeline: DecoderPipeline) -> NoReturn:
 
                         print(format_datagroup_output(data_group))
                         print(format_data_header(data_header))
-
                         for data_unit in data_units:
                             print(format_data_unit(data_unit))
+                        print()
 
                     case Segment():
                         print(format_segment(l5_data))
+                        print()
 
         except (KeyboardInterrupt, EOFError):
             sys.exit(0)
@@ -289,7 +290,7 @@ def parse_arguments(args: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "-log",
-        "--loglevel",
+        "--log-level",
         default=DEFAULT_LOG_LEVEL,
         help="Logging level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
@@ -301,7 +302,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Main program entry point."""
     try:
         args = parse_arguments(argv)
-        setup_logging(args.loglevel)
+        setup_logging(args.log_level)
         pipeline = DecoderPipeline.create()
 
         if args.input_path == STDIN_MARKER:
