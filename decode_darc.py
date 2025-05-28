@@ -3,6 +3,7 @@ import logging
 import sys
 from dataclasses import dataclass, fields
 from pathlib import Path
+from pprint import pprint
 from typing import (
     Final,
     Literal,
@@ -34,6 +35,7 @@ from darc.l5_data import (
     ContinueDataHeader,
     ProgramIndexDataHeader,
 )
+from darc.l5_data_units import decode_unit
 
 # Type aliases with more specific typing
 DataGroup: TypeAlias = L4DataGroup1 | L4DataGroup2
@@ -263,6 +265,8 @@ def process_stdin(pipeline: DecoderPipeline) -> NoReturn:
                         print(format_data_header(data_header))
                         for data_unit in data_units:
                             print(format_data_unit(data_unit))
+                            if data_group.is_crc_valid():
+                                pprint(decode_unit(data_unit)) # type: ignore
                         print()
 
                     case Segment():
