@@ -27,10 +27,10 @@ options:
 
 ## Authors
 
-- soltia48 (ソルティアよんはち)
+- KIRISHIKI Yudai
 
 ## License
 
 [MIT](https://opensource.org/licenses/MIT)
 
-Copyright (c) 2024 soltia48 (ソルティアよんはち)
+Copyright (c) 2024-2025 KIRISHIKI Yudai
