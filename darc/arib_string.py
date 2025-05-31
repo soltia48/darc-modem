@@ -91,7 +91,7 @@ DRCSMap: TypeAlias = dict[CharacterClass, dict[int, str]]
 
 
 @dataclass
-class DecoderState:
+class AribStringDecoderState:
     """Maintains the current state of the decoder"""
 
     g0: CharacterClass = CharacterClass.KANJI
@@ -113,14 +113,14 @@ class DecoderState:
         self.gr = self.g2
 
 
-class AribDecoder:
+class AribStringDecoder:
     """ARIB STD-B24 character decoder implementation"""
 
     REPLACEMENT_CHAR: Final = "�"
     MAX_MACRO_DEPTH: Final = 10
 
     def __init__(self) -> None:
-        self.state = DecoderState()
+        self.state = AribStringDecoderState()
         self._init_character_sets()
         self._init_control_handlers()
         self._init_macros()
@@ -935,7 +935,7 @@ class AribDecoder:
             return pos + 1
 
         # Save current state
-        saved_state = DecoderState(
+        saved_state = AribStringDecoderState(
             g0=self.state.g0,
             g1=self.state.g1,
             g2=self.state.g2,
@@ -1073,7 +1073,7 @@ class AribDecoder:
 
     def reset(self) -> None:
         """Reset decoder state to initial values"""
-        self.state = DecoderState()
+        self.state = AribStringDecoderState()
 
 
 class AribString:

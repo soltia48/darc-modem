@@ -15,7 +15,7 @@ from typing import (
     get_type_hints,
 )
 
-from darc.arib_string import AribDecoder
+from darc.arib_string import AribStringDecoder
 from darc.dump_binary import dump_binary
 from darc.l2_block_decoder import L2BlockDecoder
 from darc.l2_frame_decoder import L2FrameDecoder
@@ -119,12 +119,12 @@ class DecoderPipeline:
 def format_data_unit(data_unit: GenericDataUnit | bytes) -> str:
     """Format data unit for output display."""
     lines = [SEPARATOR_LINE]
-    decoder = AribDecoder()
+    string_decoder = AribStringDecoder()
 
     match data_unit:
         case GenericDataUnit():
             try:
-                data_arib_str = decoder.decode(data_unit.data_unit_data)
+                data_arib_str = string_decoder.decode(data_unit.data_unit_data)
             except:
                 data_arib_str = None
             lines.extend(
@@ -139,7 +139,7 @@ def format_data_unit(data_unit: GenericDataUnit | bytes) -> str:
             )
         case bytes():
             try:
-                data_arib_str = decoder.decode(data_unit)
+                data_arib_str = string_decoder.decode(data_unit)
             except:
                 data_arib_str = None
             lines.extend(
@@ -162,7 +162,7 @@ def format_segment(segment: Segment) -> str:
         SEPARATOR_LINE,
         f"Identifier    : {format_hex(segment.segment_identifier)}",
     ]
-    decoder = AribDecoder()
+    string_decoder = AribStringDecoder()
 
     if segment.segment_identifier == 0xE:
         lines.extend(
@@ -173,7 +173,7 @@ def format_segment(segment: Segment) -> str:
         )
 
     try:
-        data_arib_str = decoder.decode(segment.segment_data)
+        data_arib_str = string_decoder.decode(segment.segment_data)
     except:
         data_arib_str = None
 
@@ -208,8 +208,8 @@ def format_datagroup_output(data_group: DataGroup) -> str:
                     f"Group Link    : {format_hex(data_group.data_group_link)}",
                     f"End Marker    : {format_hex(data_group.end_of_data_group)}",
                     f"CRC Value     : {format_hex(data_group.crc)}",
-                    # "Group Data    :",
-                    # dump_binary(data_group.data_group_data.bytes),
+                    "RAW           :",
+                    dump_binary(data_group.to_buffer().bytes),
                 ]
             )
         case L4DataGroup2():
@@ -265,8 +265,8 @@ def process_stdin(pipeline: DecoderPipeline) -> NoReturn:
                         print(format_data_header(data_header))
                         for data_unit in data_units:
                             print(format_data_unit(data_unit))
-                            if data_group.is_crc_valid():
-                                pprint(decode_unit(data_unit)) # type: ignore
+                            # if data_group.is_crc_valid():
+                            #     pprint(decode_unit(data_unit)) # type: ignore
                         print()
 
                     case Segment():
