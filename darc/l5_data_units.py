@@ -25,7 +25,7 @@ from logging import getLogger
 
 from bitstring import ConstBitStream
 
-from darc.arib_string import AribDecoder
+from darc.arib_string import AribStringDecoder
 
 
 # ───────────────────────────── 共通ヘルパ ──────────────────────────────
@@ -521,8 +521,8 @@ class ParkingUnit(GenericDataUnit):
             if name_flag:
                 name_len = br.read_uint(8)
                 name_bytes = br.read(name_len * 8).bytes
-                decoder = AribDecoder()
-                name = decoder.decode(name_bytes)
+                string_decoder = AribStringDecoder()
+                name = string_decoder.decode(name_bytes)
             ext1 = Ext1P(
                 mesh_flag,
                 name_flag,
