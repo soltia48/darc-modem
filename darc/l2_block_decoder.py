@@ -134,9 +134,13 @@ class L2BlockDecoder:
             # Block reconstruction
             try:
                 if self.__is_information_block_detected():
-                    block = L2InformationBlock.from_buffer(block_id, self.__data_buffer)
+                    block = L2InformationBlock.from_buffer(
+                        block_id, self.__data_buffer, error="ignore"
+                    )
                 elif self.__is_parity_block_detected():
-                    block = L2ParityBlock.from_buffer(block_id, self.__data_buffer)
+                    block = L2ParityBlock.from_buffer(
+                        block_id, self.__data_buffer, error="ignore"
+                    )
                 else:
                     raise ValueError(f"Unknown Block type detected: {block_id}")
 

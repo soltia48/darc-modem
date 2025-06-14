@@ -1,5 +1,5 @@
 from logging import getLogger
-from typing import Final
+from typing import Final, Literal
 
 from bitstring import Bits
 
@@ -105,22 +105,19 @@ def _generate_bitflip_syndrome_map(length: int, error_width: int) -> dict[int, B
     Returns:
         Dictionary mapping syndromes to error vectors
     """
-    bitflip_syndrome_map: dict[int, Bits] = {}
+    syndromes: dict[int, Bits] = {}
 
-    for i in range(1, error_width + 1):
-        error_base = (1 << (i - 1)) | 1
-        counter_max = 2 ** (i - 2) if i > 2 else 1
-
-        for j in range(counter_max):
-            error_with_counter = error_base | (j << 1)
-
-            for k in range(length - i):
-                error = error_with_counter << k
-                error_vector = Bits(uint=error, length=length)
-                syndrome = crc_82_darc(error_vector.bytes, bits=length)
-                bitflip_syndrome_map[syndrome] = error_vector
-
-    return bitflip_syndrome_map
+    for w in range(1, error_width + 1):
+        base = (1 << (w - 1)) | 1  # 端点 2 bit は必ず 1
+        middle_patterns = 1 << max(w - 2, 0)  # 中間部の組み合わせ
+        for mid in range(middle_patterns):
+            pattern = base | (mid << 1)
+            for offset in range(length - w + 1):  # ★ +1 で最後まで
+                err = pattern << offset
+                vec = Bits(uint=err, length=length)
+                syn = crc_82_darc(vec.bytes, bits=length)
+                syndromes[syn] = vec
+    return syndromes
 
 
 # Pre-computed syndrome map for DSCC (272,190)
@@ -128,8 +125,12 @@ PARITY_BITFLIP_SYNDROME_MAP_DSCC_272_190: Final[dict[int, Bits]] = (
     _generate_bitflip_syndrome_map(272, 8)
 )
 
+ErrorCorrectionMode = Literal["raise", "warning", "ignore"]
 
-def correct_error_dscc_272_190(buffer: Bits, raise_error=True) -> Bits | None:
+
+def correct_error_dscc_272_190(
+    buffer: Bits, mode: ErrorCorrectionMode = "ignore"
+) -> Bits:
     """Correct error with Difference Set Cyclic Codes (272,190).
 
     Args:
@@ -158,8 +159,8 @@ def correct_error_dscc_272_190(buffer: Bits, raise_error=True) -> Bits | None:
         return buffer ^ error_vector
     except KeyError:
         message = "Error vector not found. Cannot correct error."
-        if raise_error:
+        if mode == "raise":
             raise ValueError(message)
-        else:
-            logger.warning("Error vector not found. Cannot correct error.")
-        return None
+        elif mode == "warning":
+            logger.warning(message)
+        return buffer
