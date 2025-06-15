@@ -178,8 +178,10 @@ class ProgramDataHeaderB(DataHeaderBase):
         map_zoom = stream.read("uint4")
 
         # Read and combine split position fields
-        map_position_x = (stream.read("uint8") << 4) | stream.read("uint4")
-        map_position_y = (stream.read("uint8") << 4) | stream.read("uint4")
+        map_position_x = (stream.read("uint8") << 4)
+        map_position_y = (stream.read("uint8") << 4)
+        map_position_x |= stream.read("uint4")
+        map_position_y |= stream.read("uint4")
 
         return cls(
             program_number=program_number,
@@ -333,8 +335,10 @@ class PageDataHeaderB(DataHeaderBase):
         prefecture_identifier = stream.read("uint6")
         map_type = stream.read("uint4")
         map_zoom = stream.read("uint4")
-        map_position_x = (stream.read("uint8") << 4) | stream.read("uint4")
-        map_position_y = (stream.read("uint8") << 4) | stream.read("uint4")
+        map_position_x = (stream.read("uint8") << 4)
+        map_position_y = (stream.read("uint8") << 4)
+        map_position_x |= stream.read("uint4")
+        map_position_y |= stream.read("uint4")
 
         # Read time-related fields
         content_type = stream.read("uint4")
@@ -506,8 +510,10 @@ class ProgramCommonMacroDataHeaderB(DataHeaderBase):
         prefecture_identifier = stream.read("uint6")
         map_type = stream.read("uint4")
         map_zoom = stream.read("uint4")
-        map_position_x = (stream.read("uint8") << 4) | stream.read("uint4")
-        map_position_y = (stream.read("uint8") << 4) | stream.read("uint4")
+        map_position_x = (stream.read("uint8") << 4)
+        map_position_y = (stream.read("uint8") << 4)
+        map_position_x |= stream.read("uint4")
+        map_position_y |= stream.read("uint4")
 
         # Read link-related fields
         link_layer = stream.read("uint2")
