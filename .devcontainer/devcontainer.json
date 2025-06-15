@@ -7,7 +7,7 @@
   "remoteUser": "ubuntu",
   "mounts": [
     "source=${localWorkspaceFolder},target=/workspace/,type=bind,consistency=cached",
-    "source=/dev/bus/usb/,target=/dev/bus/usb/,type=bind",
+    "source=/dev/,target=/dev/,type=bind",
     "source=/run/udev/,target=/run/udev/,type=bind,consistency=readonly"
   ],
   "runArgs": [
