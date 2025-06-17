@@ -18,6 +18,8 @@ python = "^3.12"
 bitstring = "^4.2.3"
 fire = "^0.7.0"
 pyserial = "^3.5"
+fastapi = "^0.115.12"
+uvicorn = "^0.34.3"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.10.0"
