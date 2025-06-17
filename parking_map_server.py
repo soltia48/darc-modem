@@ -213,9 +213,13 @@ def run_decoder(input_path: str, store: ParkingStore, stop_event: threading.Even
         if stop_event.is_set():
             break
         for grp, event in pipe.push_bit(bit):
+            if not grp.is_crc_valid():
+                # Drop CRC
+                continue
+
             match event:
                 case Segment():
-                    # 外部局情報などは無視
+                    # Ignore Segments
                     continue
                 case (header, units):
                     if not isinstance(header, PageDataHeaderB):
