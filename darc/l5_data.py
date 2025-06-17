@@ -178,8 +178,8 @@ class ProgramDataHeaderB(DataHeaderBase):
         map_zoom = stream.read("uint4")
 
         # Read and combine split position fields
-        map_position_x = (stream.read("uint8") << 4)
-        map_position_y = (stream.read("uint8") << 4)
+        map_position_x = stream.read("uint8") << 4
+        map_position_y = stream.read("uint8") << 4
         map_position_x |= stream.read("uint4")
         map_position_y |= stream.read("uint4")
 
@@ -335,8 +335,8 @@ class PageDataHeaderB(DataHeaderBase):
         prefecture_identifier = stream.read("uint6")
         map_type = stream.read("uint4")
         map_zoom = stream.read("uint4")
-        map_position_x = (stream.read("uint8") << 4)
-        map_position_y = (stream.read("uint8") << 4)
+        map_position_x = stream.read("uint8") << 4
+        map_position_y = stream.read("uint8") << 4
         map_position_x |= stream.read("uint4")
         map_position_y |= stream.read("uint4")
 
@@ -510,8 +510,8 @@ class ProgramCommonMacroDataHeaderB(DataHeaderBase):
         prefecture_identifier = stream.read("uint6")
         map_type = stream.read("uint4")
         map_zoom = stream.read("uint4")
-        map_position_x = (stream.read("uint8") << 4)
-        map_position_y = (stream.read("uint8") << 4)
+        map_position_x = stream.read("uint8") << 4
+        map_position_y = stream.read("uint8") << 4
         map_position_x |= stream.read("uint4")
         map_position_y |= stream.read("uint4")
 
@@ -593,47 +593,41 @@ class ProgramIndexDataHeader(DataHeaderBase):
 
 
 @dataclass
-class GenericDataUnit:
+class DataUnitBase:
     """Generic data unit structure."""
 
     data_unit_parameter: int
     data_unit_link_flag: int
-    data_unit_data: bytes
 
     _logger: ClassVar = getLogger(__name__)
 
     @classmethod
-    def is_valid_unit(cls, data: Self | bytes) -> TypeGuard[Self]:
-        """Type guard to check if data is a valid GenericDataUnit."""
-        return isinstance(data, cls)
-
-    def to_buffer(self) -> Bits:
-        """Convert data unit to binary buffer."""
-        data_length = len(self.data_unit_data)
-        buffer = pack(
-            "uint8, uint8, uint1, uint7, uint8, bytes",
-            DATA_UNIT_SEPARATOR,
-            self.data_unit_parameter,
-            self.data_unit_link_flag,
-            data_length >> 8,
-            data_length & 0xFF,
-            self.data_unit_data,
-        )
-        return Bits(buffer)
-
-    @classmethod
-    def read(cls, stream: BitStream) -> Self | bytes:
+    def _read_common(cls, stream: BitStream) -> tuple[int, int]:
         """Read data unit from bitstream."""
         data_unit_separator: int = stream.read("uint8")
         if data_unit_separator != DATA_UNIT_SEPARATOR:
             cls._logger.warning(
                 f"Invalid data unit separator: {data_unit_separator:#x}"
             )
-            stream.bytepos -= 1
-            return stream.read("bytes")
 
         data_unit_parameter = stream.read("uint8")
         data_unit_link_flag = stream.read("uint1")
+
+        return data_unit_parameter, data_unit_link_flag
+
+
+@dataclass
+class GenericDataUnit(DataUnitBase):
+    """Generic data unit structure."""
+
+    data_unit_data: bytes
+
+    _logger: ClassVar = getLogger(__name__)
+
+    @classmethod
+    def read(cls, stream: BitStream) -> Self:
+        """Read data unit from bitstream."""
+        data_unit_parameter, data_unit_link_flag = DataUnitBase._read_common(stream)
         data_unit_size = (stream.read("uint7") << 8) | stream.read("uint8")
         data_unit_data = stream.read(8 * data_unit_size).bytes
 
