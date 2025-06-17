@@ -2,324 +2,206 @@ import argparse
 import logging
 import sys
 from dataclasses import dataclass, fields
-from pathlib import Path
 from pprint import pprint
-from typing import (
-    Final,
-    Literal,
-    NoReturn,
-    Self,
-    Sequence,
-    TypeAlias,
-    Any,
-    get_type_hints,
+from typing import Final, Sequence, TypeAlias
+
+# ---------------------------------------------------------------------------
+# Shared decoder utilities (pure)
+# ---------------------------------------------------------------------------
+from decoder_core import (
+    DecoderPipeline,
+    LogLevel,
+    STDIN_MARKER,
+    bits,
+    byte_stream,
+    setup_logging,
 )
 
+# ---------------------------------------------------------------------------
+# DARC library helpers (for pretty‑printing only — heavy but optional)
+# ---------------------------------------------------------------------------
 from darc.arib_string import AribStringDecoder
 from darc.dump_binary import dump_binary
-from darc.l2_block_decoder import L2BlockDecoder
-from darc.l2_frame_decoder import L2FrameDecoder
-from darc.l3_data_packet_decoder import L3DataPacketDecoder
 from darc.l4_data import L4DataGroup1, L4DataGroup2
-from darc.l4_data_group_decoder import L4DataGroupDecoder
-from darc.l5_data import GenericDataUnit, Segment
-from darc.l5_data_decoder import L5DataDecoder
-from darc.l5_data import (
-    DataHeaderBase,
-    ProgramDataHeaderA,
-    ProgramDataHeaderB,
-    PageDataHeaderA,
-    PageDataHeaderB,
-    ProgramCommonMacroDataHeaderA,
-    ProgramCommonMacroDataHeaderB,
-    ContinueDataHeader,
-    ProgramIndexDataHeader,
-)
-from darc.l5_data_units import decode_unit
+from darc.l5_data import DataHeaderBase, GenericDataUnit, Segment
+from darc.l5_data_units import data_unit_from_generic
 
-# Type aliases with more specific typing
 DataGroup: TypeAlias = L4DataGroup1 | L4DataGroup2
-LogLevel: TypeAlias = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
-BitValue: TypeAlias = Literal[0, 1]
 
-# Constants
-STDIN_MARKER: Final[str] = "-"
-DEFAULT_LOG_LEVEL: Final[LogLevel] = "WARNING"
-PROGRAM_DESCRIPTION: Final[str] = "DARC bitstream Decoder"
-SEPARATOR_LINE: Final[str] = "-" * 80
-DOUBLE_SEPARATOR: Final[str] = "=" * 80
+SEP: Final[str] = "-" * 80
+DSEP: Final[str] = "=" * 80
 
-
-def format_hex(value: int | None, width: int = 2) -> str:
-    """Format hex value with consistent width."""
-    if value is None:
-        return "None"
-    return f"0x{value:0{width}X}"
+# ---------------------------------------------------------------------------
+# Formatting helpers (human‑readable dump)
+# ---------------------------------------------------------------------------
+_arib = AribStringDecoder()
 
 
-def format_data_header(header: DataHeaderBase) -> str:
-    """Format data header for output display.
-
-    Args:
-        header: Data header to format
-
-    Returns:
-        Formatted string representation of the data header
-    """
-    header_type = header.__class__.__name__
-    lines = [DOUBLE_SEPARATOR, f"DATA HEADER: {header_type}", SEPARATOR_LINE]
-
-    # Get all fields except internal ones (starting with _)
-    field_list = [f for f in fields(header) if not f.name.startswith("_")]
-
-    # Format each field
-    field_types = get_type_hints(header.__class__)
-    for field in field_list:
-        value = getattr(header, field.name)
-        field_type = field_types.get(field.name, Any)
-
-        if isinstance(value, int):
-            # Format numeric values as hex and decimal
-            formatted_value = f"{format_hex(value)} ({value})"
-        elif value is None:
-            formatted_value = "None"
-        else:
-            formatted_value = str(value)
-
-        # Convert field name from snake_case to Title Case
-        field_name = field.name.replace("_", " ").title()
-        lines.append(f"{field_name:<25}: {formatted_value}")
-
-    lines.append(DOUBLE_SEPARATOR)
-    return "\n".join(lines)
+def _hex(v: int | None, width: int = 2) -> str:
+    return "None" if v is None else f"0x{v:0{width}X}"
 
 
-@dataclass(frozen=True, slots=True)
-class DecoderPipeline:
-    """DARC decoder pipeline configuration."""
-
-    l2_block_decoder: L2BlockDecoder
-    l2_frame_decoder: L2FrameDecoder
-    l3_packet_decoder: L3DataPacketDecoder
-    l4_group_decoder: L4DataGroupDecoder
-    l5_data_decoder: L5DataDecoder
-
-    @classmethod
-    def create(cls) -> Self:
-        """Create a new decoder pipeline instance."""
-        return cls(
-            L2BlockDecoder(),
-            L2FrameDecoder(),
-            L3DataPacketDecoder(),
-            L4DataGroupDecoder(),
-            L5DataDecoder(),
-        )
-
-
-def format_data_unit(data_unit: GenericDataUnit | bytes) -> str:
-    """Format data unit for output display."""
-    lines = [SEPARATOR_LINE]
-    string_decoder = AribStringDecoder()
-
-    match data_unit:
-        case GenericDataUnit():
-            try:
-                data_arib_str = string_decoder.decode(data_unit.data_unit_data)
-            except:
-                data_arib_str = None
-            lines.extend(
-                [
-                    "GENERIC DATA UNIT",
-                    f"Parameter     : {format_hex(data_unit.data_unit_parameter)}",
-                    f"Link Flag     : {format_hex(data_unit.data_unit_link_flag)}",
-                    "Data          :",
-                    dump_binary(data_unit.data_unit_data),
-                    f"Data (ARIBStr): {data_arib_str}",
-                ]
-            )
-        case bytes():
-            try:
-                data_arib_str = string_decoder.decode(data_unit)
-            except:
-                data_arib_str = None
-            lines.extend(
-                [
-                    "RAW DATA UNIT (Potentially Scrambled)",
-                    dump_binary(data_unit),
-                    f"Data (ARIBStr): {data_arib_str}",
-                ]
-            )
-
-    lines.append(SEPARATOR_LINE)
-    return "\n".join(lines)
-
-
-def format_segment(segment: Segment) -> str:
-    """Format segment for output display."""
-    lines = [
-        DOUBLE_SEPARATOR,
-        "SEGMENT INFORMATION",
-        SEPARATOR_LINE,
-        f"Identifier    : {format_hex(segment.segment_identifier)}",
-    ]
-    string_decoder = AribStringDecoder()
-
-    if segment.segment_identifier == 0xE:
-        lines.extend(
-            [
-                f"Other Station Number      : {format_hex(segment.other_station_number)}",
-                f"Other Station Segment ID  : {format_hex(segment.other_station_segment_identifier)}",
-            ]
-        )
-
+def _try_arib(data: bytes) -> str | None:
+    """Attempt ARIB STD‑B24 decoding; return *None* on failure."""
     try:
-        data_arib_str = string_decoder.decode(segment.segment_data)
-    except:
-        data_arib_str = None
+        return _arib.decode(data)
+    except Exception:  # pragma: no cover – external lib may raise
+        return None
 
-    lines.extend(
-        [
-            "Segment Data  :",
-            dump_binary(segment.segment_data),
-            f"Data (ARIBStr): {data_arib_str}",
-            DOUBLE_SEPARATOR,
+
+def fmt_header(h: DataHeaderBase) -> str:
+    lines = [DSEP, f"DATA HEADER: {h.__class__.__name__}", SEP]
+    for fld in (f for f in fields(h) if not f.name.startswith("_")):
+        val = getattr(h, fld.name)
+        rep = f"{_hex(val)} ({val})" if isinstance(val, int) else str(val)
+        lines.append(f"{fld.name.replace('_', ' ').title():<25}: {rep}")
+    lines.append(DSEP)
+    return "\n".join(lines)
+
+
+def fmt_unit(u: GenericDataUnit | bytes) -> str:
+    lines: list[str] = [SEP]
+    if isinstance(u, GenericDataUnit):
+        a = _try_arib(u.data_unit_data)
+        lines += [
+            "GENERIC DATA UNIT",
+            f"Parameter     : {_hex(u.data_unit_parameter)}",
+            f"Link Flag     : {_hex(u.data_unit_link_flag)}",
+            "Data          :",
+            dump_binary(u.data_unit_data),
+            f"Data (ARIBStr): {a}",
         ]
-    )
-
+    else:
+        a = _try_arib(u)
+        lines += [
+            "RAW DATA UNIT (Potentially Scrambled)",
+            dump_binary(u),
+            f"Data (ARIBStr): {a}",
+        ]
+    lines.append(SEP)
     return "\n".join(lines)
 
 
-def format_datagroup_output(data_group: DataGroup) -> str:
-    """Format data group for output display."""
+def fmt_segment(s: Segment) -> str:
     lines = [
-        DOUBLE_SEPARATOR,
-        "DATA GROUP INFORMATION",
-        SEPARATOR_LINE,
-        f"Type          : {'Type 1' if isinstance(data_group, L4DataGroup1) else 'Type 2'}",
-        f"CRC Status    : {'Valid' if data_group.is_crc_valid() else 'Invalid'}",
-        f"Service ID    : {data_group.service_id.name}",
-        f"Group Number  : {format_hex(data_group.data_group_number)}",
+        DSEP,
+        "SEGMENT INFORMATION",
+        SEP,
+        f"Identifier    : {_hex(s.segment_identifier)}",
     ]
-
-    match data_group:
-        case L4DataGroup1():
-            lines.extend(
-                [
-                    f"Group Link    : {format_hex(data_group.data_group_link)}",
-                    f"End Marker    : {format_hex(data_group.end_of_data_group)}",
-                    f"CRC Value     : {format_hex(data_group.crc)}",
-                    "RAW           :",
-                    dump_binary(data_group.to_buffer().bytes),
-                ]
-            )
-        case L4DataGroup2():
-            lines.extend(
-                [
-                    f"CRC Value     : {format_hex(data_group.crc)}",
-                    # "Segments Data :",
-                    # dump_binary(data_group.segments_data.bytes),
-                ]
-            )
-
-    lines.append(DOUBLE_SEPARATOR)
+    if s.segment_identifier == 0xE:  # external station info
+        lines += [
+            f"Other Station Number      : {_hex(s.other_station_number)}",
+            f"Other Station Segment ID  : {_hex(s.other_station_segment_identifier)}",
+        ]
+    a = _try_arib(s.segment_data)
+    lines += [
+        "Segment Data  :",
+        dump_binary(s.segment_data),
+        f"Data (ARIBStr): {a}",
+        DSEP,
+    ]
     return "\n".join(lines)
 
 
-def setup_logging(level: LogLevel) -> None:
-    """Configure logging with specified level."""
-    formatter = logging.Formatter(
-        "%(asctime)s [%(levelname)s] %(name)s.%(funcName)s:%(lineno)d - %(message)s"
+def fmt_group(g: DataGroup) -> str:
+    lines = [
+        DSEP,
+        "DATA GROUP INFORMATION",
+        SEP,
+        f"Type          : {'Type 1' if isinstance(g, L4DataGroup1) else 'Type 2'}",
+        f"CRC Status    : {'Valid' if g.is_crc_valid() else 'Invalid'}",
+        f"Service ID    : {g.service_id.name}",
+        f"Group Number  : {_hex(g.data_group_number)}",
+    ]
+    if isinstance(g, L4DataGroup1):
+        lines += [
+            f"Group Link    : {_hex(g.data_group_link)}",
+            f"End Marker    : {_hex(g.end_of_data_group)}",
+            f"CRC Value     : {_hex(g.crc)}",
+            "RAW           :",
+            dump_binary(g.to_buffer().bytes),
+        ]
+    else:
+        lines.append(f"CRC Value     : {_hex(g.crc)}")
+    lines.append(DSEP)
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# CLI argument parsing
+# ---------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class CliArgs:
+    input_path: str
+    log_level: LogLevel
+
+
+def parse_args(argv: Sequence[str] | None = None) -> CliArgs:
+    p = argparse.ArgumentParser("DARC bit‑stream Decoder (CLI)")
+    p.add_argument(
+        "input_path",
+        help=f"Input DARC bit‑stream ({STDIN_MARKER}=stdin)",
     )
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
-
-    root_logger = logging.getLogger()
-    root_logger.setLevel(level)
-    root_logger.addHandler(handler)
-
-
-def process_stdin(pipeline: DecoderPipeline) -> NoReturn:
-    """Process DARC bitstream from standard input."""
-    while True:
-        try:
-            bit = ord(sys.stdin.read(1))
-
-            if not (block := pipeline.l2_block_decoder.push_bit(bit)):
-                continue
-
-            if not (frame := pipeline.l2_frame_decoder.push_block(block)):
-                continue
-
-            data_packets = pipeline.l3_packet_decoder.push_frame(frame)
-            data_groups = pipeline.l4_group_decoder.push_data_packets(data_packets)
-
-            for data_group in data_groups:
-                l5_data = pipeline.l5_data_decoder.push_data_group(data_group)
-
-                match l5_data:
-                    case (data_header, data_units):
-                        if data_header is None:
-                            continue
-
-                        print(format_datagroup_output(data_group))
-                        print(format_data_header(data_header))
-                        for data_unit in data_units:
-                            print(format_data_unit(data_unit))
-                            # if data_group.is_crc_valid():
-                            #     pprint(decode_unit(data_unit)) # type: ignore
-                        print()
-
-                    case Segment():
-                        print(format_segment(l5_data))
-                        print()
-
-        except (KeyboardInterrupt, EOFError):
-            sys.exit(0)
-        except Exception as e:
-            logging.error("Processing error: %s", str(e))
-            continue
-
-
-def process_file(path: Path) -> NoReturn:
-    """Process DARC bitstream from file."""
-    print("File input is not yet supported.")
-    sys.exit(1)
-
-
-def parse_arguments(args: Sequence[str] | None = None) -> argparse.Namespace:
-    """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description=PROGRAM_DESCRIPTION)
-    parser.add_argument(
-        "input_path", help=f"Input DARC bitstream path ({STDIN_MARKER} for stdin)"
-    )
-    parser.add_argument(
-        "-log",
+    p.add_argument(
+        "-l",
         "--log-level",
-        default=DEFAULT_LOG_LEVEL,
+        default=LogLevel.INFO.value,
+        choices=[lvl.value for lvl in LogLevel],
         help="Logging level",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
     )
-    return parser.parse_args(args)
+    ns = p.parse_args(argv)
+    return CliArgs(ns.input_path, LogLevel(ns.log_level))
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    """Main program entry point."""
+# ---------------------------------------------------------------------------
+# Decoder runner
+# ---------------------------------------------------------------------------
+
+
+def run_decoder(args: CliArgs) -> int:
+    """Main decoding loop – prints human‑readable dump to stdout."""
+    setup_logging(args.log_level)
+    pipe = DecoderPipeline()
+
     try:
-        args = parse_arguments(argv)
-        setup_logging(args.log_level)
-        pipeline = DecoderPipeline.create()
+        for bit in bits(byte_stream(args.input_path)):
+            for grp, event in pipe.push_bit(bit):
+                # --- L4 group summary ---
+                print(fmt_group(grp))
 
-        if args.input_path == STDIN_MARKER:
-            process_stdin(pipeline)
-        else:
-            process_file(Path(args.input_path))
-
+                # --- L5 event details ---
+                match event:
+                    case Segment() as seg:
+                        print(fmt_segment(seg), "\n")
+                    case (hdr, units):
+                        if hdr:
+                            print(fmt_header(hdr))
+                        for u in units:
+                            print(fmt_unit(u))
+                            if grp.is_crc_valid():
+                                pprint(data_unit_from_generic(u))
+                        print()
         return 0
 
-    except Exception as e:
-        logging.error("Fatal error: %s", str(e))
+    except (KeyboardInterrupt, EOFError):
+        return 0  # graceful termination
+
+    except Exception as exc:  # noqa: BLE001 – propagate as fatal
+        logging.exception("Fatal error: %s", exc)
         return 1
 
 
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+
+def main(argv: Sequence[str] | None = None) -> None:  # pragma: no cover
+    sys.exit(run_decoder(parse_args(argv)))
+
+
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
