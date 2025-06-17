@@ -1,6 +1,6 @@
 import enum
 from dataclasses import dataclass
-from typing import Self, cast
+from typing import Self, TypeVar, cast
 
 from bitstring import ConstBitStream, ReadError
 
@@ -121,6 +121,21 @@ class FeeUnit(enum.IntEnum):
     UNKNOWN = 7
 
 
+# ─────────────────────────────── Helper -------------------------------------
+
+E = TypeVar("E", bound=enum.IntEnum)
+
+
+def _safe_enum(enum_cls: type[E], value: int, fallback_attr: str = "UNKNOWN") -> E:
+    """Return *enum_cls(value)*, or *enum_cls.UNKNOWN* if *value* is invalid.
+    Keeps static type – useful for mypy/pyright.
+    """
+    try:
+        return enum_cls(value)  # type: ignore[arg-type]
+    except ValueError:
+        return getattr(enum_cls, fallback_attr)  # type: ignore[return-value]
+
+
 # ─────────────────────────────── Dataclasses ────────────────────────────────
 
 
@@ -152,11 +167,11 @@ class ParkingExt2:
     end_hour_raw: int
     end_min_raw: int
 
-    # ---------- Convenience properties ----------
+    # ---------- Convenience ----------
     @property
     def vacancy_rate_10pct(self) -> int | None:
         return (
-            None if self.waiting_time_10min_raw == 15 else self.vacancy_rate_10pct_raw
+            None if self.vacancy_rate_10pct_raw == 15 else self.vacancy_rate_10pct_raw
         )
 
     @property
@@ -207,27 +222,26 @@ class ParkingDataUnit(DataUnitBase):
     records: list[ParkingRecord]
 
     # ------------------------------------------------------------------ #
-    # Construction & public API                                          #
-    # ------------------------------------------------------------------ #
-
     def __init__(self, parameter: int, link_flag: int, records: list[ParkingRecord]):
         super().__init__(parameter, link_flag)
         self.records = records
 
     @classmethod
     def from_generic(cls, generic: GenericDataUnit) -> Self:
-        """Parse ``generic.data_unit_data`` into :class:`ParkingUnit`."""
-        bs: ConstBitStream = ConstBitStream(generic.data_unit_data)
+        """Parse ``generic.data_unit_data`` into :class:`ParkingDataUnit`."""
+        bs = ConstBitStream(generic.data_unit_data)
         records: list[ParkingRecord] = []
         while bs.pos < bs.len:
+            pos0 = bs.pos  # loop‑safety checkpoint
             try:
                 records.append(cls._parse_record(bs))
-            except ReadError:
+            except (ReadError, BitstreamEndError):
                 break  # truncated payload
+            assert bs.pos > pos0, "_parse_record() must consume bits"
         return cls(generic.data_unit_parameter, generic.data_unit_link_flag, records)
 
     # ------------------------------------------------------------------ #
-    # Low-level parsers                                                  #
+    # Low‑level parsers                                                  #
     # ------------------------------------------------------------------ #
 
     @classmethod
@@ -235,13 +249,13 @@ class ParkingDataUnit(DataUnitBase):
         try:
             # --- PB L1 (8 bits) ---
             ext_flag_u2, vacancy_u3, is_general_b = cast(
-                tuple[int, int, bool], bs.unpack("uint:2, uint:3, bool, pad:2")
+                tuple[int, int, bool], bs.readlist("uint:2, uint:3, bool, pad:2")
             )
-            ext_flag = ParkingExtFlag(ext_flag_u2)
-            vacancy_status = VacancyStatus(vacancy_u3)
+            ext_flag = _safe_enum(ParkingExtFlag, ext_flag_u2)
+            vacancy_status = _safe_enum(VacancyStatus, vacancy_u3)
 
-            # --- PB L2-L3 (32 bits) ---
-            center_x, center_y = cast(tuple[int, int], bs.unpack("uint:16, uint:16"))
+            # --- PB L2‑L3 (32 bits) ---
+            center_x, center_y = cast(tuple[int, int], bs.readlist("uint:16, uint:16"))
 
             # --- Optionals ---
             ext1 = (
@@ -252,7 +266,7 @@ class ParkingDataUnit(DataUnitBase):
             )
             ext2 = (
                 cls._parse_ext2(bs)
-                if ext_flag is ParkingExtFlag.BASIC_EXT1_EXT2
+                if ext_flag == ParkingExtFlag.BASIC_EXT1_EXT2
                 else None
             )
 
@@ -266,7 +280,7 @@ class ParkingDataUnit(DataUnitBase):
                 ext2=ext2,
             )
         except ReadError as err:
-            raise BitstreamEndError("Stream ended mid-record") from err
+            raise BitstreamEndError(f"Stream ended mid-record (bit {bs.pos})") from err
 
     # ------------------------------------------------------------------ #
     # Ext-1 / Ext-2 helpers                                              #
@@ -284,23 +298,25 @@ class ParkingDataUnit(DataUnitBase):
                 entrance_distance,
             ) = cast(
                 tuple[bool, bool, int, int, int, int],
-                bs.unpack("bool, bool, uint:2, uint:12, uint:1, uint:7"),
+                bs.readlist("bool, bool, uint:2, uint:12, uint:1, uint:7"),
             )
-            link_type = LinkType(link_type_u2)
+            link_type = _safe_enum(LinkType, link_type_u2, "OTHER")
             distance_unit = DistanceUnitP(distance_unit_u1)
 
-            entrance_x: int | None = None
-            entrance_y: int | None = None
+            entrance_x = entrance_y = None
             if mesh_flag:
                 entrance_x, entrance_y = cast(
-                    tuple[int, int], bs.unpack("uint:16, uint:16")
+                    tuple[int, int], bs.readlist("uint:16, uint:16")
                 )
 
-            name: str | None = None
+            name = None
             if name_flag:
-                (name_len,) = cast(tuple[int], bs.unpack("uint:8"))
-                name_bytes = cast(bytes, bs.read(name_len * 8).bytes)
-                name = AribStringDecoder().decode(name_bytes)
+                (name_len,) = cast(tuple[int], bs.readlist("uint:8"))
+                if name_len:
+                    name_bytes = cast(bytes, bs.read(name_len * 8).bytes)
+                    name = AribStringDecoder().decode(name_bytes)
+                else:
+                    name = ""
 
             return ParkingExt1(
                 mesh_flag=mesh_flag,
@@ -314,7 +330,7 @@ class ParkingDataUnit(DataUnitBase):
                 name=name,
             )
         except ReadError as err:
-            raise BitstreamEndError("Stream ended in Ext-1") from err
+            raise BitstreamEndError(f"Stream ended in Ext-1 (bit {bs.pos})") from err
 
     @staticmethod
     def _parse_ext2(bs: ConstBitStream) -> ParkingExt2:
@@ -333,34 +349,20 @@ class ParkingDataUnit(DataUnitBase):
                 end_hour_raw,
                 end_min_raw,
             ) = cast(
-                tuple[
-                    int,
-                    int,
-                    int,
-                    int,
-                    int,
-                    int,
-                    int,
-                    int,
-                    int,
-                    int,
-                    int,
-                    int,
-                ],
-                bs.unpack(
+                tuple[int, int, int, int, int, int, int, int, int, int, int, int],
+                bs.readlist(
                     "uint:4, uint:4, uint:3, uint:2, uint:3, uint:2, uint:3, uint:11, "
                     "uint:5, uint:3, uint:5, uint:3"
                 ),
             )
-
             return ParkingExt2(
                 vacancy_rate_10pct_raw=vacancy_rate_raw,
                 waiting_time_10min_raw=waiting_time_raw,
-                capacity_class=CapacityClass(capacity_u3),
-                height_limit=HeightLimit(height_lim_u2),
-                vehicle_limit=VehicleLimit(vehicle_lim_u3),
-                discount_condition=DiscountCondition(discount_u2),
-                fee_unit=FeeUnit(fee_unit_u3),
+                capacity_class=_safe_enum(CapacityClass, capacity_u3),
+                height_limit=_safe_enum(HeightLimit, height_lim_u2),
+                vehicle_limit=_safe_enum(VehicleLimit, vehicle_lim_u3),
+                discount_condition=_safe_enum(DiscountCondition, discount_u2),
+                fee_unit=_safe_enum(FeeUnit, fee_unit_u3),
                 fee_code_raw=fee_code_raw,
                 start_hour_raw=start_hour_raw,
                 start_min_raw=start_min_raw,
@@ -368,7 +370,7 @@ class ParkingDataUnit(DataUnitBase):
                 end_min_raw=end_min_raw,
             )
         except ReadError as err:
-            raise BitstreamEndError("Stream ended in Ext-2") from err
+            raise BitstreamEndError(f"Stream ended in Ext-2 (bit {bs.pos})") from err
 
 
 # ---------------------------------------------------------------------------
