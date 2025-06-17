@@ -7,9 +7,8 @@ from bitstring import BitStream, ReadError
 from .l4_data import L4DataGroup1, L4DataGroup2
 from .l5_data import DataHeaderBase, read_data_header, GenericDataUnit, Segment
 
-DataUnit: TypeAlias = GenericDataUnit | bytes
 DataGroup: TypeAlias = L4DataGroup1 | L4DataGroup2
-L5Data: TypeAlias = tuple[DataHeaderBase, Sequence[DataUnit]] | Segment
+L5Data: TypeAlias = tuple[DataHeaderBase, Sequence[GenericDataUnit]] | Segment
 
 PADDING_BYTE: Final[int] = 0x00
 
@@ -52,7 +51,7 @@ class L5DataDecoder:
 
     def _process_data_group1(
         self, data_group: L4DataGroup1
-    ) -> tuple[DataHeaderBase, list[DataUnit]]:
+    ) -> tuple[DataHeaderBase, list[GenericDataUnit]]:
         """Process L4DataGroup1 type data.
 
         Args:
@@ -82,7 +81,7 @@ class L5DataDecoder:
         stream = BitStream(data_group.segments_data)
         return Segment.read(stream)
 
-    def _read_data_units(self, stream: BitStream) -> list[DataUnit]:
+    def _read_data_units(self, stream: BitStream) -> list[GenericDataUnit]:
         """Read all data units from a bitstream.
 
         Args:
@@ -91,7 +90,7 @@ class L5DataDecoder:
         Returns:
             List of data units (either GenericDataUnit or raw bytes)
         """
-        data_units: list[DataUnit] = []
+        data_units: list[GenericDataUnit] = []
 
         while stream.pos < stream.len:
             try:
