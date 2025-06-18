@@ -59,25 +59,17 @@ def fmt_header(h: DataHeaderBase) -> str:
     return "\n".join(lines)
 
 
-def fmt_unit(u: GenericDataUnit | bytes) -> str:
+def fmt_unit(u: GenericDataUnit) -> str:
     lines: list[str] = [SEP]
-    if isinstance(u, GenericDataUnit):
-        a = _try_arib(u.data_unit_data)
-        lines += [
-            "GENERIC DATA UNIT",
-            f"Parameter     : {_hex(u.data_unit_parameter)}",
-            f"Link Flag     : {_hex(u.data_unit_link_flag)}",
-            "Data          :",
-            dump_binary(u.data_unit_data),
-            f"Data (ARIBStr): {a}",
-        ]
-    else:
-        a = _try_arib(u)
-        lines += [
-            "RAW DATA UNIT (Potentially Scrambled)",
-            dump_binary(u),
-            f"Data (ARIBStr): {a}",
-        ]
+    a = _try_arib(u.data_unit_data)
+    lines += [
+        "GENERIC DATA UNIT",
+        f"Parameter     : {_hex(u.data_unit_parameter)}",
+        f"Link Flag     : {_hex(u.data_unit_link_flag)}",
+        "Data          :",
+        dump_binary(u.data_unit_data),
+        f"Data (ARIBStr): {a}",
+    ]
     lines.append(SEP)
     return "\n".join(lines)
 
@@ -118,9 +110,7 @@ def fmt_group(g: DataGroup) -> str:
         lines += [
             f"Group Link    : {_hex(g.data_group_link)}",
             f"End Marker    : {_hex(g.end_of_data_group)}",
-            f"CRC Value     : {_hex(g.crc)}",
-            "RAW           :",
-            dump_binary(g.to_buffer().bytes),
+            f"CRC Value     : {_hex(g.crc)}"
         ]
     else:
         lines.append(f"CRC Value     : {_hex(g.crc)}")
