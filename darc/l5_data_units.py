@@ -51,6 +51,333 @@ class LinkType(enum.IntEnum):
 # ─────────────────────────────── Enumerations ───────────────────────────────
 
 
+class ProvideForm(enum.IntEnum):
+    """`提供形態` (PB H₁ b₈)"""
+
+    TRAVEL_TIME = 0  # 形態0 - travel-time capable format
+    CONGESTION_ONLY = 1  # 形態1 - congestion-only compact format
+
+
+class InfoFlag(enum.IntEnum):
+    """`情報数フラグ` (PB H₁ b₆)"""
+
+    PER_LINK = 0  # one data-info per link
+    SINGLE = 1  # first data-info represents all links that follow
+
+
+class ModeFlag(enum.IntEnum):
+    """`モード識別` (PB H₁ b₅)"""
+
+    CURRENT = 0  # current ARIB STD-B3 format
+    RESERVED = 1  # future formats → skip remainder of DU
+
+
+class TravelTimeExtFlag(enum.IntEnum):
+    """`拡張フラグ／リンク旅行時間` (PB L₁ b₆‥b₁) - provide-form 0 only.
+
+    Values **0–59** are interpreted as travel-time in *10-second* units.
+    The symbolic constants below cover 60–63.
+    """
+
+    BASIC_EXT1 = 60  # + Ext-1
+    BASIC_EXT1_EXT2 = 61  # + Ext-1 + Ext-2
+    UNDEFINED = 62
+    DISAPPEAR_OR_AGGREGATE = 63  # meaning depends on congestion degree
+
+
+class PerLinkExtFlag(enum.IntEnum):
+    """`拡張フラグ` (提供形態1) - 2-bit flag per link."""
+
+    NONE = 0  # 拡張無し
+    BASIC_EXT1 = 1  # 基本 + Ext-1
+    DISAPPEAR = 2  # 消失リンク
+    AGGREGATE_OR_INVALID = 3  # 情報集約／無効
+
+
+# ─────────────────────────────── Dataclasses ────────────────────────────────
+
+
+@dataclass(slots=True)
+class TravelTimeExt1:
+    """Distance/length related extension (Ext-1)."""
+
+    distance_unit: DistanceUnit  # 2 bits (PB L₂ b₈, PB L₃ b₈)
+    head_pos_raw: int  # 7 bits (PB L₂ b₇‥b₁)
+    jam_length_raw: int  # 7 bits (PB L₃ b₇‥b₁)
+
+    # ---------------- convenience ----------------
+    @property
+    def head_pos_m(self) -> int | None:
+        """Distance *from the link end* to the congestion head, in metres."""
+
+        return _decode_distance(self.distance_unit, self.head_pos_raw)
+
+    @property
+    def jam_length_m(self) -> int | None:
+        return _decode_distance(self.distance_unit, self.jam_length_raw)
+
+
+@dataclass(slots=True)
+class TravelTimeExt2:
+    """Extended travel-time (Ext-2)."""
+
+    time_unit: TimeUnit  # 1 bit (PB L₄ b₈)
+    link_travel_time_raw: int  # 7 bits (PB L₄ b₇‥b₁)
+
+    # ---------------- convenience ----------------
+    @property
+    def link_travel_time_sec(self) -> int | None:
+        if self.link_travel_time_raw in (0, 126, 127):
+            return None  # 0 = unknown, 126/127 = reserved
+        mult = 10 if self.time_unit == TimeUnit.SEC_10 else 60
+        return self.link_travel_time_raw * mult
+
+
+@dataclass(slots=True)
+class TravelTimeLinkRecord:
+    """Per-link congestion / travel-time record."""
+
+    congestion: CongestionDegree
+    travel_time_sec: int | None  # form-0 quick value, or Ext-2 decoded
+    ext_flag_raw: int | None  # raw 6-bit (form-0) or 2-bit (form-1) flag
+    ext1: TravelTimeExt1 | None = None
+    ext2: TravelTimeExt2 | None = None
+
+    # ---------------- helpers ----------------
+    @property
+    def has_ext1(self) -> bool:  # noqa: D401 - property is fine
+        return self.ext1 is not None
+
+    @property
+    def has_ext2(self) -> bool:
+        return self.ext2 is not None
+
+
+# ──────────────────────────────── Main Unit ─────────────────────────────────
+
+
+@dataclass
+class TravelTimeDataUnit(DataUnitBase):
+    """Fully-parsed *Congestion / Travel-Time* data-unit (parameter 0x40)."""
+
+    provide_form: ProvideForm
+    travel_time_kind: TravelTimeKind
+    info_flag: InfoFlag
+    mode_flag: ModeFlag
+    link_type: LinkType
+    link_count: int
+    lead_link_number: int
+    records: list[TravelTimeLinkRecord]
+
+    # ---------------------------------------------------------------------
+    def __init__(
+        self,
+        parameter: int,
+        link_flag: int,
+        provide_form: ProvideForm,
+        travel_time_kind: TravelTimeKind,
+        info_flag: InfoFlag,
+        mode_flag: ModeFlag,
+        link_type: LinkType,
+        link_count: int,
+        lead_link_number: int,
+        records: list[TravelTimeLinkRecord],
+    ) -> None:
+        super().__init__(parameter, link_flag)
+        self.provide_form = provide_form
+        self.travel_time_kind = travel_time_kind
+        self.info_flag = info_flag
+        self.mode_flag = mode_flag
+        self.link_type = link_type
+        self.link_count = link_count
+        self.lead_link_number = lead_link_number
+        self.records = records
+
+    # ------------------------------------------------------------------
+    @classmethod
+    def from_generic(
+        cls, generic: GenericDataUnit
+    ) -> "Self":  # noqa: C901 - complex parser
+        bs = ConstBitStream(generic.data_unit_data)
+
+        # ───────────────────── Header (PB H₁–H₄) ──────────────────────
+        (provide_form_b, travel_time_kind_b, info_flag_b, mode_flag_b, link_cnt_hi) = (
+            cast(
+                tuple[bool, bool, bool, bool, int],
+                bs.readlist("bool, bool, bool, bool, uint:4"),
+            )
+        )
+        link_cnt_lo = bs.read("uint:8")  # PB H₂
+        link_count = (link_cnt_hi << 8) | link_cnt_lo
+
+        # PB H₃
+        reserved_u2, link_type_u2, lead_link_hi = cast(
+            tuple[int, int, int],
+            bs.readlist("uint:2, uint:2, uint:4"),
+        )
+        lead_link_lo = bs.read("uint:8")  # PB H₄
+        lead_link_number = (lead_link_hi << 8) | lead_link_lo
+
+        provide_form = ProvideForm(provide_form_b)
+        travel_kind = TravelTimeKind(travel_time_kind_b)
+        info_flag = InfoFlag(info_flag_b)
+        mode_flag = ModeFlag(mode_flag_b)
+        link_type = _safe_enum(LinkType, link_type_u2)
+
+        # If mode flag = 1, spec mandates we skip the remainder (future format).
+        if mode_flag == ModeFlag.RESERVED:
+            return cls(
+                generic.data_unit_parameter,
+                generic.data_unit_link_flag,
+                provide_form,
+                travel_kind,
+                info_flag,
+                mode_flag,
+                link_type,
+                link_count,
+                lead_link_number,
+                [],
+            )
+
+        # ───────────────────── Data-info blocks ────────────────────────
+        records: list[TravelTimeLinkRecord] = []
+
+        num_records_expected = 1 if info_flag == InfoFlag.SINGLE else link_count
+        record_index = 0
+        while record_index < num_records_expected and bs.pos < bs.len:
+            try:
+                if provide_form == ProvideForm.TRAVEL_TIME:
+                    rec = cls._parse_link_form0(bs)
+                    records.append(rec)
+                    record_index += 1
+                else:  # congestion-only compact form
+                    # Two half-records per byte
+                    byte_val = bs.read("uint:8")
+                    high_nibble = byte_val >> 4
+                    low_nibble = byte_val & 0xF
+
+                    for nib in (high_nibble, low_nibble):
+                        if record_index >= num_records_expected:
+                            break
+                        rec = cls._parse_nibble_form1(bs, nib)
+                        records.append(rec)
+                        record_index += 1
+            except ReadError:
+                break  # truncated stream
+
+        return cls(
+            generic.data_unit_parameter,
+            generic.data_unit_link_flag,
+            provide_form,
+            travel_kind,
+            info_flag,
+            mode_flag,
+            link_type,
+            link_count,
+            lead_link_number,
+            records,
+        )
+
+    # ------------------------------------------------------------------
+    # Per-link parsers                                                   #
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_link_form0(bs: ConstBitStream) -> TravelTimeLinkRecord:
+        """Parse one *travel-time capable* link-record (提供形態0)."""
+        val_u8 = bs.read("uint:8")
+        congestion_u2 = (val_u8 >> 6) & 0x3
+        flag_u6 = val_u8 & 0x3F
+
+        congestion = _safe_enum(CongestionDegree, congestion_u2)
+
+        travel_time_sec: int | None = None
+        ext1 = ext2 = None
+
+        if flag_u6 <= 59:
+            travel_time_sec = None if flag_u6 == 0 else flag_u6 * 10
+        elif flag_u6 == TravelTimeExtFlag.BASIC_EXT1:
+            ext1 = TravelTimeDataUnit._parse_ext1(bs)
+        elif flag_u6 == TravelTimeExtFlag.BASIC_EXT1_EXT2:
+            ext1 = TravelTimeDataUnit._parse_ext1(bs)
+            ext2 = TravelTimeDataUnit._parse_ext2(bs)
+        elif flag_u6 == TravelTimeExtFlag.DISAPPEAR_OR_AGGREGATE:
+            # travel_time remains None; semantics left to caller
+            pass
+        # flag 62 → ignored
+
+        return TravelTimeLinkRecord(
+            congestion=congestion,
+            travel_time_sec=travel_time_sec,
+            ext_flag_raw=flag_u6,
+            ext1=ext1,
+            ext2=ext2,
+        )
+
+    @staticmethod
+    def _parse_nibble_form1(bs: ConstBitStream, nibble: int) -> TravelTimeLinkRecord:
+        """Parse one *congestion-only* half-record (提供形態1)."""
+
+        ext_flag_u2 = (nibble >> 2) & 0x3  # b4,b3 (or b8,b7) already aligned
+        cong_u2 = nibble & 0x3  # b2,b1 (or b6,b5)
+
+        congestion = _safe_enum(CongestionDegree, cong_u2)
+        ext_flag = _safe_enum(PerLinkExtFlag, ext_flag_u2)
+
+        ext1 = None
+        if ext_flag == PerLinkExtFlag.BASIC_EXT1:
+            ext1 = TravelTimeDataUnit._parse_ext1(bs)
+
+        return TravelTimeLinkRecord(
+            congestion=congestion,
+            travel_time_sec=None,
+            ext_flag_raw=ext_flag_u2,
+            ext1=ext1,
+            ext2=None,
+        )
+
+    # ------------------------------------------------------------------
+    # Extension-level parsers                                            #
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _parse_ext1(bs: ConstBitStream) -> TravelTimeExt1:
+        try:
+            # Read PB L₂ and PB L₃ *raw* so we can split bits manually.
+            byte_l2 = bs.read("uint:8")
+            byte_l3 = bs.read("uint:8")
+
+            distance_unit_bits = ((byte_l2 >> 7) & 0x1) << 1 | ((byte_l3 >> 7) & 0x1)
+            distance_unit = _safe_enum(DistanceUnit, distance_unit_bits)
+
+            head_pos_raw = byte_l2 & 0x7F  # lower 7 bits
+            jam_len_raw = byte_l3 & 0x7F  # lower 7 bits
+
+            return TravelTimeExt1(
+                distance_unit=distance_unit,
+                head_pos_raw=head_pos_raw,
+                jam_length_raw=jam_len_raw,
+            )
+        except ReadError as err:
+            raise RuntimeError("Stream ended mid Ext-1") from err
+
+    @staticmethod
+    def _parse_ext2(bs: ConstBitStream) -> TravelTimeExt2:
+        try:
+            byte_l4 = bs.read("uint:8")
+            time_unit_bit = (byte_l4 >> 7) & 0x1
+            link_time_raw = byte_l4 & 0x7F
+            return TravelTimeExt2(
+                time_unit=_safe_enum(TimeUnit, time_unit_bit),
+                link_travel_time_raw=link_time_raw,
+            )
+        except ReadError as err:
+            raise RuntimeError("Stream ended mid Ext-2") from err
+
+
+# ─────────────────────────────── Enumerations ───────────────────────────────
+
+
 class RestrictionAccidentExtFlag(enum.IntEnum):
     BASIC = 0  # 基本情報のみ
     BASIC_EXT1 = 1  # + 拡張構成1
@@ -211,7 +538,7 @@ class RestrictionAccidentBasicInfo:
     link_type: LinkType
     link_number: int
     continuous_links: int | None  # Via only
-    coord_x_hi: int | None  # upper 8‑bit
+    coord_x_hi: int | None  # upper 8-bit
     coord_y_hi: int | None
     name: str | None
 
@@ -242,7 +569,7 @@ class RestrictionAccidentRecord:
 
 @dataclass
 class RestrictionAccidentDataUnit(DataUnitBase):
-    """Fully‑parsed *Restriction / Accident* data‑unit (parameter 0x41)."""
+    """Fully-parsed *Restriction / Accident* data-unit (parameter 0x41)."""
 
     records: list[RestrictionAccidentRecord]
 
@@ -268,7 +595,7 @@ class RestrictionAccidentDataUnit(DataUnitBase):
         return cls(generic.data_unit_parameter, generic.data_unit_link_flag, recs)
 
     # -----------------------------------------------------------
-    # low‑level helpers
+    # low-level helpers
     # -----------------------------------------------------------
     @staticmethod
     def _read_name(bs: ConstBitStream) -> str:
@@ -277,7 +604,7 @@ class RestrictionAccidentDataUnit(DataUnitBase):
         return AribStringDecoder().decode(data)
 
     # -----------------------------------------------------------
-    # record‑level parser
+    # record-level parser
     # -----------------------------------------------------------
     @classmethod
     def _parse_record(
@@ -334,7 +661,7 @@ class RestrictionAccidentDataUnit(DataUnitBase):
         )
 
     # -----------------------------------------------------------
-    # block‑level parsers
+    # block-level parsers
     # -----------------------------------------------------------
     @classmethod
     def _parse_start(cls, bs: ConstBitStream) -> RestrictionAccidentBasicInfo:
@@ -352,7 +679,7 @@ class RestrictionAccidentDataUnit(DataUnitBase):
     def _parse_end(cls, bs: ConstBitStream) -> RestrictionAccidentBasicInfo:
         """Parse *End block* (always final link, present when link_count ≥ 2).
 
-        According to the spec, the X/Y upper‑byte rows are present regardless of
+        According to the spec, the X/Y upper-byte rows are present regardless of
         *mesh_flag* for this block, so we read them unconditionally.
         """
         mesh = bs.read("bool")  # may still be useful for receiver
@@ -363,7 +690,7 @@ class RestrictionAccidentDataUnit(DataUnitBase):
         coord_x = coord_y = None
         if mesh:
             coord_x = bs.read("uint:8")
-            coord_y = bs.read("uint:8")  # Y upper‑byte
+            coord_y = bs.read("uint:8")  # Y upper-byte
         name = cls._read_name(bs) if name_f else None
         return RestrictionAccidentBasicInfo(
             mesh,
@@ -509,9 +836,7 @@ class ParkingExt1:
 
     @property
     def entrance_distance(self) -> int | None:
-        return (
-            None if self.entrance_distance_raw == 127 else self.entrance_distance_raw
-        )
+        return None if self.entrance_distance_raw == 127 else self.entrance_distance_raw
 
 
 @dataclass(slots=True)
@@ -594,7 +919,7 @@ class ParkingDataUnit(DataUnitBase):
         bs = ConstBitStream(generic.data_unit_data)
         records: list[ParkingRecord] = []
         while bs.pos < bs.len:
-            pos0 = bs.pos  # loop‑safety checkpoint
+            pos0 = bs.pos  # loop-safety checkpoint
             try:
                 records.append(cls._parse_record(bs))
             except (ReadError, BitstreamEndError):
@@ -603,7 +928,7 @@ class ParkingDataUnit(DataUnitBase):
         return cls(generic.data_unit_parameter, generic.data_unit_link_flag, records)
 
     # ------------------------------------------------------------------ #
-    # Low‑level parsers                                                  #
+    # Low-level parsers                                                  #
     # ------------------------------------------------------------------ #
 
     @classmethod
@@ -616,7 +941,7 @@ class ParkingDataUnit(DataUnitBase):
             ext_flag = _safe_enum(ParkingExtFlag, ext_flag_u2)
             vacancy_status = _safe_enum(VacancyStatus, vacancy_u3)
 
-            # --- PB L2‑L3 (32 bits) ---
+            # --- PB L2-L3 (32 bits) ---
             center_x, center_y = cast(tuple[int, int], bs.readlist("uint:16, uint:16"))
 
             # --- Optionals ---
@@ -744,6 +1069,8 @@ def data_unit_from_generic(generic: GenericDataUnit):
     """
     Wrap *GenericDataUnit* into the appropriate typed decoder.
     """
+    if generic.data_unit_parameter == 0x40:
+        return TravelTimeDataUnit.from_generic(generic)
     if generic.data_unit_parameter == 0x41:
         return RestrictionAccidentDataUnit.from_generic(generic)
     if generic.data_unit_parameter == 0x42:
