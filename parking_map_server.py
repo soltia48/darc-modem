@@ -19,7 +19,7 @@ from decoder_core import (
     setup_logging,
 )
 
-# --- domain‑specific helpers ----------------------------------------------
+# --- domain-specific helpers ----------------------------------------------
 from darc.arib_b3_position import arib_to_tokyo_deg, tokyo_to_wgs84
 from darc.l5_data import PageDataHeaderB, Segment
 from darc.l5_data_units import ParkingDataUnit, data_unit_from_generic
@@ -299,7 +299,7 @@ def parse_args(argv: Sequence[str] | None = None):
         "input_path",
         nargs="?",
         default=STDIN_MARKER,
-        help="Path to DARC bit‑stream or '-' for stdin",
+        help="Path to DARC bit-stream or '-' for stdin",
     )
     p.add_argument("--host", default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
     p.add_argument("--port", type=int, default=8000, help="Web server port")
@@ -320,7 +320,7 @@ def parse_args(argv: Sequence[str] | None = None):
 
 
 # ---------------------------------------------------------------------------
-# Decoder thread – pushes records into ParkingStore
+# Decoder thread - pushes records into ParkingStore
 # ---------------------------------------------------------------------------
 
 
@@ -329,7 +329,7 @@ def run_decoder(
     park_store: ParkingStore,
     stop_event: threading.Event,
 ):
-    """Decode bit‑stream and upsert Parking records into the store."""
+    """Decode bit-stream and upsert Parking records into the store."""
     pipe = DecoderPipeline()
     for bit in bits(byte_stream(input_path)):
         if stop_event.is_set():
@@ -383,7 +383,7 @@ def build_app(park_store: ParkingStore, allowed_origins: list[str]) -> FastAPI:
 
     @app.get("/parkings", response_class=Response)
     async def parkings():
-        """Return all parking data as GeoJSON (bytes, UTF‑8)."""
+        """Return all parking data as GeoJSON (bytes, UTF-8)."""
         return Response(
             park_store.to_geojson_bytes(),
             media_type="application/json",

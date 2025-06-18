@@ -1,4 +1,4 @@
-"""Pure DARC decoder utilities – no side effects."""
+"""Pure DARC decoder utilities - no side effects."""
 
 from __future__ import annotations
 import logging
@@ -37,7 +37,7 @@ class LogLevel(str, Enum):
 def setup_logging(level: LogLevel) -> None:
     logging.basicConfig(
         level=level.to_int(),
-        format="%(asctime)s [%(levelname)s] %(name)s:%(lineno)d – %(message)s",
+        format="%(asctime)s [%(levelname)s] %(name)s:%(lineno)d - %(message)s",
     )
 
 

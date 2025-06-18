@@ -18,7 +18,7 @@ from decoder_core import (
 )
 
 # ---------------------------------------------------------------------------
-# DARC library helpers (for pretty‑printing only — heavy but optional)
+# DARC library helpers (for pretty-printing only — heavy but optional)
 # ---------------------------------------------------------------------------
 from darc.arib_string import AribStringDecoder
 from darc.dump_binary import dump_binary
@@ -32,7 +32,7 @@ SEP: Final[str] = "-" * 80
 DSEP: Final[str] = "=" * 80
 
 # ---------------------------------------------------------------------------
-# Formatting helpers (human‑readable dump)
+# Formatting helpers (human-readable dump)
 # ---------------------------------------------------------------------------
 _arib = AribStringDecoder()
 
@@ -42,10 +42,10 @@ def _hex(v: int | None, width: int = 2) -> str:
 
 
 def _try_arib(data: bytes) -> str | None:
-    """Attempt ARIB STD‑B24 decoding; return *None* on failure."""
+    """Attempt ARIB STD-B24 decoding; return *None* on failure."""
     try:
         return _arib.decode(data)
-    except Exception:  # pragma: no cover – external lib may raise
+    except Exception:  # pragma: no cover - external lib may raise
         return None
 
 
@@ -130,10 +130,10 @@ class CliArgs:
 
 
 def parse_args(argv: Sequence[str] | None = None) -> CliArgs:
-    p = argparse.ArgumentParser("DARC bit‑stream Decoder (CLI)")
+    p = argparse.ArgumentParser("DARC bit-stream Decoder (CLI)")
     p.add_argument(
         "input_path",
-        help=f"Input DARC bit‑stream ({STDIN_MARKER}=stdin)",
+        help=f"Input DARC bit-stream ({STDIN_MARKER}=stdin)",
     )
     p.add_argument(
         "-l",
@@ -152,7 +152,7 @@ def parse_args(argv: Sequence[str] | None = None) -> CliArgs:
 
 
 def run_decoder(args: CliArgs) -> int:
-    """Main decoding loop – prints human‑readable dump to stdout."""
+    """Main decoding loop - prints human-readable dump to stdout."""
     setup_logging(args.log_level)
     pipe = DecoderPipeline()
 
@@ -179,7 +179,7 @@ def run_decoder(args: CliArgs) -> int:
     except (KeyboardInterrupt, EOFError):
         return 0  # graceful termination
 
-    except Exception as exc:  # noqa: BLE001 – propagate as fatal
+    except Exception as exc:  # noqa: BLE001 - propagate as fatal
         logging.exception("Fatal error: %s", exc)
         return 1
 

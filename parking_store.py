@@ -1,35 +1,22 @@
-from __future__ import annotations
-
-"""ParkingStore – thread‑safe in‑memory cache for ParkingRecords.
-
-Enhancements (2025‑06‑18)
-------------------------
-* **Constants enrichment**
-  * Vacancy status text / color, link‑type text などを追加
-* **Bug‑fix**
-  * `road_link` 生成時に `None += str` が起こり得た問題を修正。
-"""
-
 import threading
 from typing import Any, Final
 
-import orjson  # 高速 JSON シリアライザ
+import orjson
 
-# --- domain‑specific helpers ---------------------------------------------
-from darc.l5_data_units import (
-    ParkingRecord,
-    DistanceUnitParking,
+from darc.helpers import LinkType
+from darc.parking import (
     CapacityClass,
-    HeightLimit,
-    VehicleLimit,
     DiscountCondition,
+    DistanceUnitParking,
     FeeUnit,
+    HeightLimit,
+    ParkingRecord,
     VacancyStatus,
-    LinkType,
+    VehicleLimit,
 )
 
 # ---------------------------------------------------------------------------
-# Constants (Enum‑keyed dictionaries)
+# Constants (Enum-keyed dictionaries)
 # ---------------------------------------------------------------------------
 
 FEE_UNIT_TEXT: Final[dict[FeeUnit, str]] = {
@@ -56,7 +43,7 @@ CAPACITY_CLASS_TEXT: Final[dict[CapacityClass, str]] = {
 
 VACANCY_STATUS_TEXT: Final[dict[VacancyStatus, str]] = {
     VacancyStatus.EMPTY: "空車",
-    VacancyStatus.CONGEST: "混雑",
+    VacancyStatus.CONGESTED: "混雑",
     VacancyStatus.FULL: "満車",
     VacancyStatus.CLOSED: "閉鎖",
     VacancyStatus.UNDEFINED_4: "不明",
@@ -67,7 +54,7 @@ VACANCY_STATUS_TEXT: Final[dict[VacancyStatus, str]] = {
 
 VACANCY_STATUS_COLOR: Final[dict[VacancyStatus, str]] = {
     VacancyStatus.EMPTY: "#28a745",
-    VacancyStatus.CONGEST: "#fd7e14",
+    VacancyStatus.CONGESTED: "#fd7e14",
     VacancyStatus.FULL: "#dc3545",
     VacancyStatus.CLOSED: "#6c757d",
 }
@@ -101,7 +88,7 @@ DISCOUNT_TEXT: Final[dict[DiscountCondition, str]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Helper – coordinate normalization
+# Helper - coordinate normalization
 # ---------------------------------------------------------------------------
 
 
@@ -115,7 +102,7 @@ def _round_coord(value: float, digits: int = 7) -> float:
 
 
 class ParkingStore:
-    """In‑memory cache that deduplicates :class:`ParkingRecord` by coordinates."""
+    """In-memory cache that deduplicates :class:`ParkingRecord` by coordinates."""
 
     __slots__ = ("_data", "_lock")
 
