@@ -1,6 +1,5 @@
 import enum
 from dataclasses import dataclass
-from datetime import time
 from typing import Self, TypeVar, cast
 
 from bitstring import ConstBitStream, ReadError
@@ -52,7 +51,7 @@ class LinkType(enum.IntEnum):
 # ─────────────────────────────── Enumerations ───────────────────────────────
 
 
-class RegulationAccidentExtFlag(enum.IntEnum):
+class RestrictionAccidentExtFlag(enum.IntEnum):
     BASIC = 0  # 基本情報のみ
     BASIC_EXT1 = 1  # + 拡張構成1
     BASIC_EXT1_EXT2 = 2  # + 拡張構成1 + 2
@@ -78,7 +77,7 @@ class CauseEvent(enum.IntEnum):
     UNKNOWN = 15
 
 
-class RegulationContent(enum.IntEnum):
+class RestrictionContent(enum.IntEnum):
     NONE = 0
     TRAFFIC_STOP = 1  # 通行止め
     RIGHT_TURN_RESTRICT = 2  # 右左折規制
@@ -101,79 +100,112 @@ class RegulationContent(enum.IntEnum):
 
 
 @dataclass(slots=True)
-class RegulationAccidentExt1:
-    distance_unit: DistanceUnit
-    distance_len_raw: int  # 0-63
-    congestion_degree: CongestionDegree
-    travel_time_kind: TravelTimeKind
-    travel_time_unit: TimeUnit
-    travel_time_val_raw: int  # 0-15
+class RestrictionAccidentExt1:
+    """Extension-1 (4 bytes) — distance-offsets & detail codes."""
 
-    # convenience
+    reg_content_detail_raw: int  # PBm
+    cause_event_detail_raw: int  # PBm+1
+    distance_start_unit: DistanceUnit  # PBm+2 b7-6
+    distance_end_unit: DistanceUnit  # PBm+2 b7-6
+    dist_from_start_raw: int  # PBm+2 b5-0 (0-63)
+    dist_from_end_raw: int  # PBm+3 b5-0 (0-63)
+
+    # ---- convenience -------------------------------------------------
     @property
-    def distance_m(self) -> int | None:
-        if self.distance_unit == DistanceUnit.TEN_M:
-            return self.distance_len_raw * 10
-        if self.distance_unit == DistanceUnit.HUNDRED_M:
-            return self.distance_len_raw * 100
-        if self.distance_unit == DistanceUnit.ONE_KM:
-            return self.distance_len_raw * 1000
-        return None
+    def dist_from_start_m(self) -> int | None:
+        return _decode_distance(self.distance_start_unit, self.dist_from_start_raw)
 
     @property
-    def travel_time_s(self) -> int:
-        base = 10 if self.travel_time_unit == TimeUnit.SEC_10 else 60
-        return self.travel_time_val_raw * base
+    def dist_from_end_m(self) -> int | None:
+        return _decode_distance(self.distance_end_unit, self.dist_from_end_raw)
 
-    # --- parser -----------------------------------------------------
+    # ---- parser ------------------------------------------------------
     @classmethod
     def parse(cls, bs: ConstBitStream) -> Self:
-        du = DistanceUnit(bs.read("uint:2"))
-        dist = bs.read("uint:6")
-        cong = CongestionDegree(bs.read("uint:2"))
-        _ = bs.read("uint:2")  # spare bits
-        ttk = TravelTimeKind(bs.read("uint:1"))
-        ttu = TimeUnit(bs.read("uint:1"))
-        ttval = bs.read("uint:4")
-        bs.read("pad:14")  # skip remaining spare
-        return cls(du, dist, cong, ttk, ttu, ttval)
+        rc_detail, ce_detail = cast(tuple[int, int], bs.readlist("uint:8, uint:8"))
+        dist_start_unit_u2, dist_start, dist_end_unit_u2, dist_end = cast(
+            tuple[int, int, int, int],
+            bs.readlist("uint:2, uint:6, uint:2, uint:6"),
+        )
+
+        return cls(
+            reg_content_detail_raw=rc_detail,
+            cause_event_detail_raw=ce_detail,
+            distance_start_unit=DistanceUnit(dist_start_unit_u2),
+            distance_end_unit=DistanceUnit(dist_end_unit_u2),
+            dist_from_start_raw=dist_start,
+            dist_from_end_raw=dist_end,
+        )
 
 
 @dataclass(slots=True)
-class RegulationAccidentExt2:
-    start_month_raw: int  # 1-12 (0=none)
-    start_day_raw: int  # 1-31
-    start_hour_raw: int  # 0-23
-    start_min10_raw: int  # 0-5  (×10)
-    end_hour_raw: int  # 0-23
-    end_min10_raw: int  # 0-5
+class RestrictionAccidentExt2:
+    """Extension-2 (6 bytes) — start / end month-day-time (10-minute step)."""
 
-    # convenience
+    time_flag: bool
+    start_month_raw: int
+    end_month_raw: int
+    start_day_raw: int
+    start_hour_raw: int
+    start_min10_raw: int
+    end_day_raw: int
+    end_hour_raw: int
+    end_min10_raw: int
+
+    # ---- convenience -------------------------------------------------
     @property
-    def start_time(self) -> time | None:
+    def start_time_tuple(self) -> tuple[int, int, int] | None:
         if self.start_month_raw == 0:
             return None
-        return time(self.start_hour_raw, self.start_min10_raw * 10)
+        return (self.start_day_raw, self.start_hour_raw, self.start_min10_raw * 10)
 
     @property
-    def end_time(self) -> time | None:
-        return time(self.end_hour_raw, self.end_min10_raw * 10)
+    def end_time_tuple(self) -> tuple[int, int, int] | None:
+        if self.end_month_raw == 0:
+            return None
+        return (self.end_day_raw, self.end_hour_raw, self.end_min10_raw * 10)
 
-    # --- parser -----------------------------------------------------
+    # ---- parser ------------------------------------------------------
     @classmethod
     def parse(cls, bs: ConstBitStream) -> Self:
-        mon = bs.read("uint:4")
-        day = bs.read("uint:5")
-        sh = bs.read("uint:5")
-        sm10 = bs.read("uint:6")
-        eh = bs.read("uint:5")
-        em10 = bs.read("uint:6")
-        bs.read("pad:17")  # spare bits
-        return cls(mon, day, sh, sm10, eh, em10)
+        time_flag = bs.read("bool")
+        bs.read("uint:7")  # Undefined
+        start_month = bs.read("uint:4")
+        end_month = bs.read("uint:4")
+        start_day = bs.read("uint:5")
+        start_hour = bs.read("uint:5")
+        start_min10 = bs.read("uint:6")
+        end_day = bs.read("uint:5")
+        end_hour = bs.read("uint:5")
+        end_min10 = bs.read("uint:6")
+        return cls(
+            time_flag=time_flag,
+            start_month_raw=start_month,
+            end_month_raw=end_month,
+            start_day_raw=start_day,
+            start_hour_raw=start_hour,
+            start_min10_raw=start_min10,
+            end_day_raw=end_day,
+            end_hour_raw=end_hour,
+            end_min10_raw=end_min10,
+        )
+
+
+# ---------------------------------------------------------------------
+# small shared helper
+# ---------------------------------------------------------------------
+def _decode_distance(unit: DistanceUnit, val: int) -> int | None:
+    if unit == DistanceUnit.TEN_M:
+        return val * 10
+    if unit == DistanceUnit.HUNDRED_M:
+        return val * 100
+    if unit == DistanceUnit.ONE_KM:
+        return val * 1000
+    return None
 
 
 @dataclass(slots=True)
-class RegulationAccidentBasicInfo:
+class RestrictionAccidentBasicInfo:
     mesh_flag: bool
     name_flag: bool
     link_type: LinkType
@@ -185,23 +217,23 @@ class RegulationAccidentBasicInfo:
 
 
 @dataclass(slots=True)
-class RegulationAccidentRecord:
-    ext_flag: RegulationAccidentExtFlag
+class RestrictionAccidentRecord:
+    ext_flag: RestrictionAccidentExtFlag
     link_count: int
     cause_event: CauseEvent
-    regulation_content: RegulationContent
+    Restriction_content: RestrictionContent
     distance_unit: DistanceUnit
-    regulation_length_raw: int
-    basics: list[RegulationAccidentBasicInfo]
-    ext1: RegulationAccidentExt1 | None = None
-    ext2: RegulationAccidentExt2 | None = None
+    Restriction_length_raw: int
+    basics: list[RestrictionAccidentBasicInfo]
+    ext1: RestrictionAccidentExt1 | None = None
+    ext2: RestrictionAccidentExt2 | None = None
 
     @property
-    def regulation_length(self) -> int | None:
+    def Restriction_length(self) -> int | None:
         return (
             None
-            if self.regulation_length_raw in (0, 63)
-            else self.regulation_length_raw
+            if self.Restriction_length_raw in (0, 63)
+            else self.Restriction_length_raw
         )
 
 
@@ -209,14 +241,14 @@ class RegulationAccidentRecord:
 
 
 @dataclass
-class RegulationAccidentDataUnit(DataUnitBase):
-    """Fully‑parsed *Regulation / Accident* data‑unit (parameter 0x41)."""
+class RestrictionAccidentDataUnit(DataUnitBase):
+    """Fully‑parsed *Restriction / Accident* data‑unit (parameter 0x41)."""
 
-    records: list[RegulationAccidentRecord]
+    records: list[RestrictionAccidentRecord]
 
     # -----------------------------------------------------------
     def __init__(
-        self, parameter: int, link_flag: int, records: list[RegulationAccidentRecord]
+        self, parameter: int, link_flag: int, records: list[RestrictionAccidentRecord]
     ):
         super().__init__(parameter, link_flag)
         self.records = records
@@ -225,7 +257,7 @@ class RegulationAccidentDataUnit(DataUnitBase):
     @classmethod
     def from_generic(cls, generic: GenericDataUnit) -> Self:
         bs = ConstBitStream(generic.data_unit_data)
-        recs: list[RegulationAccidentRecord] = []
+        recs: list[RestrictionAccidentRecord] = []
         while bs.pos < bs.len:
             start = bs.pos
             try:
@@ -250,16 +282,16 @@ class RegulationAccidentDataUnit(DataUnitBase):
     @classmethod
     def _parse_record(
         cls, bs: ConstBitStream
-    ) -> RegulationAccidentRecord:  # noqa: C901
+    ) -> RestrictionAccidentRecord:  # noqa: C901
         # ─ Header ------------------------------------------------------
-        ext_flag = RegulationAccidentExtFlag(bs.read("uint:2"))
+        ext_flag = RestrictionAccidentExtFlag(bs.read("uint:2"))
         link_total = bs.read("uint:6")
         cause_event = _safe_enum(CauseEvent, bs.read("uint:4"))
-        regulation_content = _safe_enum(RegulationContent, bs.read("uint:4"))
+        Restriction_content = _safe_enum(RestrictionContent, bs.read("uint:4"))
         distance_unit = _safe_enum(DistanceUnit, bs.read("uint:2"))
-        regulation_length_raw = bs.read("uint:6")
+        Restriction_length_raw = bs.read("uint:6")
 
-        basics: list[RegulationAccidentBasicInfo] = []
+        basics: list[RestrictionAccidentBasicInfo] = []
         remaining = link_total
 
         # 1) Start block -----------------------------------------------
@@ -282,20 +314,20 @@ class RegulationAccidentDataUnit(DataUnitBase):
         # 4) Extensions (once) -----------------------------------------
         ext1 = ext2 = None
         if ext_flag in (
-            RegulationAccidentExtFlag.BASIC_EXT1,
-            RegulationAccidentExtFlag.BASIC_EXT1_EXT2,
+            RestrictionAccidentExtFlag.BASIC_EXT1,
+            RestrictionAccidentExtFlag.BASIC_EXT1_EXT2,
         ):
-            ext1 = RegulationAccidentExt1.parse(bs)
-        if ext_flag == RegulationAccidentExtFlag.BASIC_EXT1_EXT2:
-            ext2 = RegulationAccidentExt2.parse(bs)
+            ext1 = RestrictionAccidentExt1.parse(bs)
+        if ext_flag == RestrictionAccidentExtFlag.BASIC_EXT1_EXT2:
+            ext2 = RestrictionAccidentExt2.parse(bs)
 
-        return RegulationAccidentRecord(
+        return RestrictionAccidentRecord(
             ext_flag=ext_flag,
             link_count=link_total,
             cause_event=cause_event,
-            regulation_content=regulation_content,
+            Restriction_content=Restriction_content,
             distance_unit=distance_unit,
-            regulation_length_raw=regulation_length_raw,
+            Restriction_length_raw=Restriction_length_raw,
             basics=basics,
             ext1=ext1,
             ext2=ext2,
@@ -305,19 +337,19 @@ class RegulationAccidentDataUnit(DataUnitBase):
     # block‑level parsers
     # -----------------------------------------------------------
     @classmethod
-    def _parse_start(cls, bs: ConstBitStream) -> RegulationAccidentBasicInfo:
+    def _parse_start(cls, bs: ConstBitStream) -> RestrictionAccidentBasicInfo:
         mesh = bs.read("bool")
         name_f = bs.read("bool")
         link_type = _safe_enum(LinkType, bs.read("uint:2"))
         link_hi = bs.read("uint:4")
         link_lo = bs.read("uint:8")
         name = cls._read_name(bs) if name_f else None
-        return RegulationAccidentBasicInfo(
+        return RestrictionAccidentBasicInfo(
             mesh, name_f, link_type, (link_hi << 8) | link_lo, None, None, None, name
         )
 
     @classmethod
-    def _parse_end(cls, bs: ConstBitStream) -> RegulationAccidentBasicInfo:
+    def _parse_end(cls, bs: ConstBitStream) -> RestrictionAccidentBasicInfo:
         """Parse *End block* (always final link, present when link_count ≥ 2).
 
         According to the spec, the X/Y upper‑byte rows are present regardless of
@@ -333,7 +365,7 @@ class RegulationAccidentDataUnit(DataUnitBase):
             coord_x = bs.read("uint:8")
             coord_y = bs.read("uint:8")  # Y upper‑byte
         name = cls._read_name(bs) if name_f else None
-        return RegulationAccidentBasicInfo(
+        return RestrictionAccidentBasicInfo(
             mesh,
             name_f,
             link_type,
@@ -346,7 +378,7 @@ class RegulationAccidentDataUnit(DataUnitBase):
 
     # -----------------------------------------------------------
     @classmethod
-    def _parse_via(cls, bs: ConstBitStream) -> tuple[RegulationAccidentBasicInfo, int]:
+    def _parse_via(cls, bs: ConstBitStream) -> tuple[RestrictionAccidentBasicInfo, int]:
         """Parse *Via block* and return (block, links_covered)."""
         mesh = bs.read("bool")
         name_f = bs.read("bool")
@@ -359,7 +391,7 @@ class RegulationAccidentDataUnit(DataUnitBase):
             coord_x = bs.read("uint:8")
             coord_y = bs.read("uint:8")
         name = cls._read_name(bs) if name_f else None
-        info = RegulationAccidentBasicInfo(
+        info = RestrictionAccidentBasicInfo(
             mesh,
             name_f,
             link_type,
@@ -470,10 +502,16 @@ class ParkingExt1:
     link_type: LinkType
     link_number: int
     distance_unit: DistanceUnitParking
-    entrance_distance: int
+    entrance_distance_raw: int
     entrance_x: int | None
     entrance_y: int | None
     name: str | None
+
+    @property
+    def entrance_distance(self) -> int | None:
+        return (
+            None if self.entrance_distance_raw == 127 else self.entrance_distance_raw
+        )
 
 
 @dataclass(slots=True)
@@ -648,7 +686,7 @@ class ParkingDataUnit(DataUnitBase):
                 link_type=link_type,
                 link_number=link_number,
                 distance_unit=distance_unit,
-                entrance_distance=entrance_distance,
+                entrance_distance_raw=entrance_distance,
                 entrance_x=entrance_x,
                 entrance_y=entrance_y,
                 name=name,
@@ -707,7 +745,7 @@ def data_unit_from_generic(generic: GenericDataUnit):
     Wrap *GenericDataUnit* into the appropriate typed decoder.
     """
     if generic.data_unit_parameter == 0x41:
-        return RegulationAccidentDataUnit.from_generic(generic)
+        return RestrictionAccidentDataUnit.from_generic(generic)
     if generic.data_unit_parameter == 0x42:
         return ParkingDataUnit.from_generic(generic)
     return generic
