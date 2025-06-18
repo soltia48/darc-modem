@@ -2,11 +2,12 @@ import argparse
 import logging
 import sys
 import threading
-from typing import Any, Final, Sequence
+from typing import Sequence
 
 import uvicorn
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, ORJSONResponse
 
 # --- shared core -----------------------------------------------------------
 from decoder_core import (
@@ -18,160 +19,270 @@ from decoder_core import (
     setup_logging,
 )
 
-# --- domain-specific helpers ----------------------------------------------
+# --- domain‑specific helpers ----------------------------------------------
 from darc.arib_b3_position import arib_to_tokyo_deg, tokyo_to_wgs84
 from darc.l5_data import PageDataHeaderB, Segment
-from darc.l5_data_units import ParkingDataUnit, ParkingRecord, data_unit_from_generic
+from darc.l5_data_units import ParkingDataUnit, data_unit_from_generic
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-FEE_UNIT_TEXT: Final[dict[str, str]] = {
-    "MIN_30": "30分",
-    "HOUR_1": "1時間",
-    "HOUR_2": "2時間",
-    "HOUR_3": "3時間",
-    "HALF_DAY": "半日",
-    "ONE_DAY": "1日",
-    "ONCE": "1回",
-    "UNKNOWN": "不明",
-}
-
-# ---------------------------------------------------------------------------
-# ParkingStore implementation
-# ---------------------------------------------------------------------------
-
-
-class ParkingStore:
-    """Thread‑safe container that deduplicates parking records by coordinates.
-
-    Two main responsibilities:
-
-    1. **Upsert** a record keyed by its *WGS‑84* latitude/longitude.
-    2. **Serialize** the current snapshot as GeoJSON so that web clients can
-       consume it directly.
-
-    The class intentionally *does not* perform time‑series storage or
-    persistence – that concern should live elsewhere (DB, TimescaleDB, etc.).
-    """
-
-    def __init__(self) -> None:
-        self._data: dict[str, tuple[float, float, ParkingRecord]] = {}
-        self._lock = threading.Lock()
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-    def upsert(self, lat: float, lon: float, record: ParkingRecord) -> None:
-        """Insert or replace a record at *lat/lon*.
-
-        A simple string key ``"P:{lat},{lon}"`` avoids floating‑point key issues
-        while remaining human‑readable.
-        """
-        key = f"P:{lat},{lon}"
-        with self._lock:
-            self._data[key] = (lat, lon, record)
-
-    # ------------------------------------------------------------------
-    def to_geojson(self) -> dict[str, Any]:
-        """Return the entire store as a *GeoJSON FeatureCollection*."""
-        with self._lock:
-            features = [
-                self._to_feature(code, *tpl) for code, tpl in self._data.items()
-            ]
-        return {"type": "FeatureCollection", "features": features}
-
-    # ------------------------------------------------------------------
-    # Private helpers
-    # ------------------------------------------------------------------
-    @staticmethod
-    def _to_feature(
-        code: str, lat: float, lon: float, rec: ParkingRecord
-    ) -> dict[str, Any]:
-        """Convert a single :class:`ParkingRecord` to a GeoJSON *Feature*."""
-        props: dict[str, Any] = {
-            "name": getattr(rec.ext1, "name", None),
-            "vacancy_status": rec.vacancy_status.name,
-        }
-
-        if (ext2 := getattr(rec, "ext2", None)) is not None:
-            # Capacity class --------------------------------------------------
-            props["capacity_class"] = ext2.capacity_class.name
-
-            # Vacancy rate ---------------------------------------------------
-            if (rate := ext2.vacancy_rate_10pct) is not None:
-                props["vacancy_rate"] = f"{rate * 10}%"
-
-            # Waiting time ---------------------------------------------------
-            if (wt := ext2.waiting_time_10min) is not None:
-                props["waiting_time"] = f"{wt * 10}分"
-            else:
-                props["waiting_time"] = "0分"  # JS hides when "0分"
-
-            # Fee -------------------------------------------------------------
-            if ext2.fee_code is None:
-                props["fee_text"] = "料金不明"
-            else:
-                price = ext2.fee_code * 10
-                unit_jp = FEE_UNIT_TEXT.get(ext2.fee_unit.name, "不明")
-                props["fee_text"] = f"{price}円 / {unit_jp}"
-
-            # Business hours --------------------------------------------------
-            def _fmt(h: int | None, m10: int | None) -> str:
-                return "--" if h is None or m10 is None else f"{h:02d}:{m10 * 10:02d}"
-
-            props["hours_text"] = (
-                f"{_fmt(ext2.start_hour, ext2.start_min10)} - {_fmt(ext2.end_hour, ext2.end_min10)}"
-            )
-
-        return {
-            "type": "Feature",
-            "id": code,
-            "geometry": {"type": "Point", "coordinates": [lon, lat]},
-            "properties": props,
-        }
+from parking_store import ParkingStore
 
 
 # ---------------------------------------------------------------------------
 # HTML (Leaflet UI)
 # ---------------------------------------------------------------------------
-INDEX_HTML: str = """<!DOCTYPE html>
-<html lang=\"ja\">
+INDEX_HTML = """<!DOCTYPE html>
+<html lang="ja">
   <head>
-    <meta charset=\"utf-8\">
-    <meta name=\"viewport\" content=\"width=device-width,initial-scale=1.0\">
-    <title>Parking Map</title>
-    <link rel=\"stylesheet\" href=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.css\" crossorigin>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>駐車場マップ</title>
+
+    <!-- Fonts -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Leaflet CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      crossorigin
+    />
+
     <style>
-      html,body{height:100%;margin:0}#map{height:100%}
-      .popup{font-size:.9rem;line-height:1.4}.popup h3{margin:0 0 .25rem;font-size:1.1rem}
+      /* Tokens */
+      :root {
+        --bg: #ffffff;
+        --fg: #222222;
+        --panel-bg: rgba(255, 255, 255, 0.9);
+        --panel-border: #cccccc;
+        --accent: #0078ff;
+        --vac-empty: #28a745;
+        --vac-congest: #fd7e14;
+        --vac-full: #dc3545;
+        --vac-closed: #6c757d;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1e1e1e;
+          --fg: #e0e0e0;
+          --panel-bg: rgba(30, 30, 30, 0.9);
+          --panel-border: #444;
+          --accent: #479cff;
+        }
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        font-family: "Noto Sans JP", system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      #map {
+        height: 100%;
+      }
+
+      /* Popup */
+      .popup {
+        font-size: 0.9rem;
+        line-height: 1.4;
+      }
+      .popup h3 {
+        margin: 0 0 0.25rem;
+        font-size: 1.05rem;
+        font-weight: 700;
+      }
+      .row {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.5rem;
+        white-space: nowrap;
+      }
+      .row span:first-child {
+        color: #666;
+      }
+
+      /* Common controls */
+      .L-control-panel {
+        background: var(--panel-bg);
+        border: 1px solid var(--panel-border);
+        border-radius: 0.5rem;
+        padding: 0.6rem 0.8rem;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+        font-size: 0.8rem;
+      }
+
+      /* Legend */
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin-bottom: 0.25rem;
+      }
+      .legend-swatch {
+        width: 0.9rem;
+        height: 0.9rem;
+        border-radius: 50%;
+      }
+
+      /* Refresh button */
+      button.L-control-panel {
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        cursor: pointer;
+      }
+      button.L-control-panel:hover {
+        opacity: 0.85;
+      }
     </style>
   </head>
   <body>
-    <div id=\"map\" aria-label=\"駐車場マップ\"></div>
-    <script src=\"https://unpkg.com/leaflet@1.9.4/dist/leaflet.js\" crossorigin defer></script>
+    <div id="map" aria-label="駐車場マップ"></div>
+
+    <!-- Leaflet JS -->
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      crossorigin
+      defer
+    ></script>
+
     <script defer>
-      window.addEventListener('DOMContentLoaded',()=>{
-        const map=L.map('map').setView([35.681236,139.767125],11);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
-        let markers={};
-        const colorOf=s=>({EMPTY:'green',CONGEST:'orange',FULL:'red',CLOSED:'gray'})[s]||'gray';
-        const popupHtml=p=>`<div class=\"popup\"><h3>${p.name||'Parking'}</h3><div>Vacancy: ${p.vacancy_status}</div>${p.vacancy_rate?`<div>Rate: ${p.vacancy_rate}</div>`:''}${p.waiting_time&&p.waiting_time!=='0分'?`<div>Wait: ${p.waiting_time}</div>`:''}${p.capacity_class?`<div>Capacity: ${p.capacity_class}</div>`:''}${p.fee_text?`<div>Fee: ${p.fee_text}</div>`:''}${p.hours_text?`<div>Hours: ${p.hours_text}</div>`:''}</div>`;
-        async function refresh(){
-          try{
-            const res=await fetch('/parkings');
-            if(!res.ok)throw new Error(res.statusText);
-            const data=await res.json();
-            Object.values(markers).forEach(m=>map.removeLayer(m));
-            markers={};
-            data.features.forEach(f=>{
-              const[lon,lat]=f.geometry.coordinates;const col=colorOf(f.properties.vacancy_status);
-              const marker=L.circleMarker([lat,lon],{radius:6,color:col,weight:1,fillColor:col,fillOpacity:.9}).addTo(map).bindPopup(popupHtml(f.properties));
-              markers[f.id]=marker;
+      // Color constants (CSS tokens)
+      const CSSColor = (name) =>
+        getComputedStyle(document.documentElement).getPropertyValue(name);
+      const COLORS = {
+        EMPTY: CSSColor("--vac-empty"),
+        CONGEST: CSSColor("--vac-congest"),
+        FULL: CSSColor("--vac-full"),
+        CLOSED: CSSColor("--vac-closed"),
+      };
+
+      // Japanese labels
+      const formatRow = (label, value) =>
+        value
+          ? `<div class="row"><span>${label}</span><span>${value}</span></div>`
+          : "";
+
+      window.addEventListener("DOMContentLoaded", () => {
+        // Map initialization
+        const map = L.map("map", { attributionControl: false }).setView(
+          [35.681236, 139.767125],
+          11
+        );
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          attribution: "&copy; OpenStreetMap contributors",
+        }).addTo(map);
+
+        // Legend control
+        const legend = L.control({ position: "bottomright" });
+        legend.onAdd = () => {
+          const div = L.DomUtil.create("div", "L-control-panel");
+          div.innerHTML = `
+            <strong>空車状況</strong>
+            <div class="legend-item"><span class="legend-swatch" style="background:${COLORS.EMPTY}"></span>空車</div>
+            <div class="legend-item"><span class="legend-swatch" style="background:${COLORS.CONGEST}"></span>混雑</div>
+            <div class="legend-item"><span class="legend-swatch" style="background:${COLORS.FULL}"></span>満車</div>
+            <div class="legend-item"><span class="legend-swatch" style="background:${COLORS.CLOSED}"></span>閉鎖/不明</div>
+          `;
+          return div;
+        };
+        legend.addTo(map);
+
+        // Timestamp control
+        const tsCtrl = L.control({ position: "topright" });
+        tsCtrl.onAdd = () => {
+          const div = L.DomUtil.create("div", "L-control-panel");
+          div.id = "timestamp";
+          div.textContent = "--";
+          return div;
+        };
+        tsCtrl.addTo(map);
+
+        // Manual refresh button
+        const refreshBtn = L.control({ position: "topleft" });
+        refreshBtn.onAdd = () => {
+          const btn = L.DomUtil.create("button", "L-control-panel");
+          btn.textContent = "↻ 更新";
+          btn.onclick = refreshAll;
+          return btn;
+        };
+        refreshBtn.addTo(map);
+
+        // Parking layer
+        let parkingMarkers = {};
+        const colorVac = (prop) => prop.vacancy_color || COLORS.CLOSED;
+
+        const popParking = (p) => `
+          <div class="popup">
+            <h3>${p.name || "駐車場"}</h3>
+            ${formatRow("満空", p.vacancy_status_jp)}
+            ${formatRow("満車率", p.vacancy_rate)}
+            ${formatRow(
+              "待ち時間",
+              p.waiting_time && p.waiting_time !== "0分" ? p.waiting_time : ""
+            )}
+            ${formatRow("収容台数", p.capacity_class)}
+            ${formatRow("料金", p.fee_text)}
+            ${formatRow("営業時間", p.hours_text)}
+            ${formatRow("入口までの距離", p.entrance_distance)}
+            ${formatRow("面する道路", p.road_link)}
+            ${formatRow("高さ制限", p.height_limit)}
+            ${formatRow("車種制限", p.vehicle_limit)}
+            ${formatRow("割引条件", p.discount)}
+          </div>
+        `;
+
+        async function refreshParking() {
+          try {
+            const res = await fetch("/parkings");
+            if (!res.ok) throw new Error(res.statusText);
+            const geojson = await res.json();
+
+            // Remove existing markers
+            Object.values(parkingMarkers).forEach((m) => map.removeLayer(m));
+            parkingMarkers = {};
+
+            // Add new markers
+            geojson.features.forEach((f) => {
+              const [lon, lat] = f.geometry.coordinates;
+              const props = f.properties;
+              const m = L.circleMarker([lat, lon], {
+                radius: 6,
+                color: colorVac(props),
+                weight: 1,
+                fillColor: colorVac(props),
+                fillOpacity: 0.9,
+              })
+                .addTo(map)
+                .bindPopup(popParking(props));
+              parkingMarkers[f.id] = m;
             });
-          }catch(e){console.error('refresh failed',e)}
+
+            updateTimestamp();
+          } catch (err) {
+            console.error("parking", err);
+          }
         }
-        refresh();setInterval(refresh,30_000);
+
+        const updateTimestamp = () => {
+          const el = document.getElementById("timestamp");
+          if (el)
+            el.textContent = new Date().toLocaleTimeString("ja-JP", {
+              hour12: false,
+            });
+        };
+
+        async function refreshAll() {
+          await refreshParking();
+        }
+
+        refreshAll();
+        setInterval(refreshAll, 30_000);
       });
     </script>
   </body>
@@ -183,14 +294,21 @@ INDEX_HTML: str = """<!DOCTYPE html>
 
 
 def parse_args(argv: Sequence[str] | None = None):
-    p = argparse.ArgumentParser("DARC Parking Map Server")
+    p = argparse.ArgumentParser("DARC Parking & Regulation Map Server")
     p.add_argument(
         "input_path",
         nargs="?",
         default=STDIN_MARKER,
-        help="Path to DARC bit-stream or '-' for stdin",
+        help="Path to DARC bit‑stream or '-' for stdin",
     )
+    p.add_argument("--host", default="0.0.0.0", help="Bind host (default: 0.0.0.0)")
     p.add_argument("--port", type=int, default=8000, help="Web server port")
+    p.add_argument(
+        "--cors",
+        nargs="*",
+        default=["*"],
+        help="Allowed CORS origins (default: '*')",
+    )
     p.add_argument(
         "-l",
         "--log-level",
@@ -202,41 +320,41 @@ def parse_args(argv: Sequence[str] | None = None):
 
 
 # ---------------------------------------------------------------------------
-# Decoder thread
+# Decoder thread – pushes records into ParkingStore
 # ---------------------------------------------------------------------------
 
 
-def run_decoder(input_path: str, store: ParkingStore, stop_event: threading.Event):
-    """Decode bit-stream and upsert ParkingDataUnit records into *store*."""
+def run_decoder(
+    input_path: str,
+    park_store: ParkingStore,
+    stop_event: threading.Event,
+):
+    """Decode bit‑stream and upsert Parking records into the store."""
     pipe = DecoderPipeline()
     for bit in bits(byte_stream(input_path)):
         if stop_event.is_set():
             break
         for grp, event in pipe.push_bit(bit):
             if not grp.is_crc_valid():
-                # Drop CRC
-                continue
-
+                continue  # Drop CRC errors
             match event:
                 case Segment():
-                    # Ignore Segments
-                    continue
+                    continue  # Ignore segments
                 case (header, units):
                     if not isinstance(header, PageDataHeaderB):
                         continue
                     for u in units:
                         u = data_unit_from_generic(u)
-                        if not isinstance(u, ParkingDataUnit):
-                            continue
-                        for rec in u.records:
-                            lat_t, lon_t = arib_to_tokyo_deg(
-                                header.map_position_x,
-                                header.map_position_y,
-                                rec.center_x,
-                                rec.center_y,
-                            )
-                            lat_w, lon_w = tokyo_to_wgs84(lat_t, lon_t)
-                            store.upsert(lat_w, lon_w, rec)
+                        if isinstance(u, ParkingDataUnit):
+                            for rec in u.records:
+                                lat_t, lon_t = arib_to_tokyo_deg(
+                                    header.map_position_x,
+                                    header.map_position_y,
+                                    rec.center_x,
+                                    rec.center_y,
+                                )
+                                lat_w, lon_w = tokyo_to_wgs84(lat_t, lon_t)
+                                park_store.upsert(lat_w, lon_w, rec)
 
 
 # ---------------------------------------------------------------------------
@@ -244,16 +362,32 @@ def run_decoder(input_path: str, store: ParkingStore, stop_event: threading.Even
 # ---------------------------------------------------------------------------
 
 
-def build_app(store: ParkingStore) -> FastAPI:
-    app = FastAPI(title="Parking Map Server")
+def build_app(park_store: ParkingStore, allowed_origins: list[str]) -> FastAPI:
+    app = FastAPI(
+        title="Parking Map Server", default_response_class=ORJSONResponse
+    )
 
+    # CORS ------------------------------------------------------------------
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=True,
+        allow_methods=["GET"],
+        allow_headers=["*"],
+    )
+
+    # Routes ----------------------------------------------------------------
     @app.get("/", response_class=HTMLResponse)
-    async def index(_: Request):  # noqa: D401
+    async def index(_: Request):
         return HTMLResponse(INDEX_HTML)
 
-    @app.get("/parkings")
-    async def parkings():  # noqa: D401
-        return JSONResponse(store.to_geojson())
+    @app.get("/parkings", response_class=Response)
+    async def parkings():
+        """Return all parking data as GeoJSON (bytes, UTF‑8)."""
+        return Response(
+            park_store.to_geojson_bytes(),
+            media_type="application/json",
+        )
 
     return app
 
@@ -267,20 +401,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     setup_logging(LogLevel(args.log_level))
 
-    store = ParkingStore()
+    park_store = ParkingStore()
     stop_event = threading.Event()
 
     decoder_thr = threading.Thread(
         target=run_decoder,
-        args=(args.input_path, store, stop_event),
+        args=(args.input_path, park_store, stop_event),
         daemon=True,
     )
     decoder_thr.start()
 
-    logging.info("Web map 👉 http://localhost:%d", args.port)
+    logging.info("Web map 👉 http://%s:%d", args.host, args.port)
 
     try:
-        uvicorn.run(build_app(store), host="0.0.0.0", port=args.port, log_level="info")
+        uvicorn.run(
+            build_app(park_store, args.cors),
+            host=args.host,
+            port=args.port,
+            log_level="info",
+        )
     except KeyboardInterrupt:
         stop_event.set()
         decoder_thr.join()
