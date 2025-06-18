@@ -14,6 +14,25 @@ class BitstreamEndError(RuntimeError):
     """Raised when the bitstream ends unexpectedly while parsing a field."""
 
 
+# ─────────────────────────────── Helpers ────────────────────────────────
+E = TypeVar("E", bound=enum.IntEnum)
+
+
+def _safe_enum(enum_cls: type[E], value: int, fallback_attr: str = "UNKNOWN") -> E:
+    """Return enum_cls(value) or enum_cls.UNKNOWN when *value* is out-of-range."""
+    try:
+        return enum_cls(value)  # type: ignore[arg-type]
+    except ValueError:
+        return getattr(enum_cls, fallback_attr)  # type: ignore[return-value]
+
+
+def _read_name(bs: ConstBitStream) -> str:
+    length = bs.read("uint:8")
+    if length == 0:
+        return ""
+    return AribStringDecoder().decode(bs.read(length * 8).bytes)
+
+
 # ─────────────────────────────── Enumerations ───────────────────────────────
 
 
@@ -595,15 +614,6 @@ class RestrictionAccidentDataUnit(DataUnitBase):
         return cls(generic.data_unit_parameter, generic.data_unit_link_flag, recs)
 
     # -----------------------------------------------------------
-    # low-level helpers
-    # -----------------------------------------------------------
-    @staticmethod
-    def _read_name(bs: ConstBitStream) -> str:
-        length = bs.read("uint:8")
-        data = bs.read(length * 8).bytes if length else b""
-        return AribStringDecoder().decode(data)
-
-    # -----------------------------------------------------------
     # record-level parser
     # -----------------------------------------------------------
     @classmethod
@@ -670,7 +680,7 @@ class RestrictionAccidentDataUnit(DataUnitBase):
         link_type = _safe_enum(LinkType, bs.read("uint:2"))
         link_hi = bs.read("uint:4")
         link_lo = bs.read("uint:8")
-        name = cls._read_name(bs) if name_f else None
+        name = _read_name(bs) if name_f else None
         return RestrictionAccidentBasicInfo(
             mesh, name_f, link_type, (link_hi << 8) | link_lo, None, None, None, name
         )
@@ -691,7 +701,7 @@ class RestrictionAccidentDataUnit(DataUnitBase):
         if mesh:
             coord_x = bs.read("uint:8")
             coord_y = bs.read("uint:8")  # Y upper-byte
-        name = cls._read_name(bs) if name_f else None
+        name = _read_name(bs) if name_f else None
         return RestrictionAccidentBasicInfo(
             mesh,
             name_f,
@@ -717,7 +727,7 @@ class RestrictionAccidentDataUnit(DataUnitBase):
         if mesh:
             coord_x = bs.read("uint:8")
             coord_y = bs.read("uint:8")
-        name = cls._read_name(bs) if name_f else None
+        name = _read_name(bs) if name_f else None
         info = RestrictionAccidentBasicInfo(
             mesh,
             name_f,
@@ -802,21 +812,6 @@ class FeeUnit(enum.IntEnum):
     ONE_DAY = 5
     ONCE = 6
     UNKNOWN = 7
-
-
-# ─────────────────────────────── Helper -------------------------------------
-
-E = TypeVar("E", bound=enum.IntEnum)
-
-
-def _safe_enum(enum_cls: type[E], value: int, fallback_attr: str = "UNKNOWN") -> E:
-    """Return *enum_cls(value)*, or *enum_cls.UNKNOWN* if *value* is invalid.
-    Keeps static type – useful for mypy/pyright.
-    """
-    try:
-        return enum_cls(value)  # type: ignore[arg-type]
-    except ValueError:
-        return getattr(enum_cls, fallback_attr)  # type: ignore[return-value]
 
 
 # ─────────────────────────────── Dataclasses ────────────────────────────────
@@ -1060,6 +1055,208 @@ class ParkingDataUnit(DataUnitBase):
             raise BitstreamEndError(f"Stream ended in Ext-2 (bit {bs.pos})") from err
 
 
+# ─────────────────────────────── Enumerations ────────────────────────────
+class SectionTT_ExtFlag(enum.IntEnum):
+    BASIC = 0
+    BASIC_EXT1 = 1
+    MODE_RESERVED_2 = 2  # future use
+    MODE_RESERVED_3 = 3  # future use
+
+
+class SectionTT_Priority(enum.IntEnum):
+    UNDEFINED_0 = 0
+    NORMAL = 1
+    UNDEFINED_2 = 2
+    IMPORTANT = 3
+
+
+# ─────────────────────────────── Dataclasses ─────────────────────────────
+@dataclass(slots=True)
+class SectionPoint:
+    mesh_flag: bool
+    name_flag: bool
+    link_type: LinkType
+    link_number: int
+    coord_x_hi: int | None  # absent for *start* block
+    coord_y_hi: int | None
+    name: str | None
+
+
+@dataclass(slots=True)
+class RouteBlock:
+    hour_raw: int  # 5- bit travel- time hour (0- 31)
+    minute_raw: int  # 6- bit travel- time minute (0- 63)
+    priority: SectionTT_Priority | None  # only set for the primary route
+    link_count: int
+    points: list[SectionPoint]
+
+
+@dataclass(slots=True)
+class AltRouteGroup:
+    alt_count: int  # 他経由路線数 (0- 31)
+    routes: list[RouteBlock]
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Segment ––– 0x43 ペイロードが自己再帰的に繰り返す単位
+# ════════════════════════════════════════════════════════════════════════
+@dataclass(slots=True)
+class SectionTravelTimeSegment:
+    ext_flag: SectionTT_ExtFlag
+    primary_route: RouteBlock
+    alt_route_groups: list[AltRouteGroup]
+
+
+# ════════════════════════════════════════════════════════════════════════
+# Main Data- Unit wrapper (parameter 0x43)
+# ════════════════════════════════════════════════════════════════════════
+@dataclass
+class SectionTravelTimeDataUnit(DataUnitBase):
+    """Decoder for ARIB STD- B3 §3.1.4 *Section Travel- Time* (param 0x43).
+
+    The payload may contain **multiple segments**; each segment itself consists of
+    a primary route (基本構成) and optional alternate- route groups (拡張構成1).
+    """
+
+    segments: list[SectionTravelTimeSegment]
+
+    # ──────────────────────────────────────────────────────────────
+    @classmethod  # noqa: C901 – complex parser
+    def from_generic(cls, generic: GenericDataUnit) -> Self:
+        bs = ConstBitStream(generic.data_unit_data)
+        segments: list[SectionTravelTimeSegment] = []
+
+        while bs.pos < bs.len:
+            start_pos = bs.pos
+            try:
+                segments.append(cls._parse_segment(bs))
+            except (ReadError, ValueError):
+                # If parsing fails we stop to avoid infinite loop
+                bs.pos = bs.len
+            # safety: ensure progress
+            if bs.pos == start_pos:
+                break
+
+        return cls(generic.data_unit_parameter, generic.data_unit_link_flag, segments)
+
+    # ──────────────────────────────────────────────────────────────
+    # Segment- level parser
+    # ──────────────────────────────────────────────────────────────
+    @classmethod  # noqa: C901
+    def _parse_segment(cls, bs: ConstBitStream) -> SectionTravelTimeSegment:
+        # ── PB L1 ──
+        ext_flag_u2, _undef_bit, hour_raw = cast(
+            tuple[int, bool, int], bs.readlist("uint:2, bool, uint:5")
+        )
+        ext_flag = SectionTT_ExtFlag(ext_flag_u2)
+
+        # ── PB L2 ──
+        priority_u2, minute_raw = cast(tuple[int, int], bs.readlist("uint:2, uint:6"))
+        priority = SectionTT_Priority(priority_u2)
+
+        # ── PB L3 ──
+        link_count = bs.read("uint:8")
+
+        # Handle future reserved modes: consume remaining bits of this segment and return stub
+        if ext_flag in {
+            SectionTT_ExtFlag.MODE_RESERVED_2,
+            SectionTT_ExtFlag.MODE_RESERVED_3,
+        }:
+            # Reservation mode ⇒ remaining bits until next byte with MSB set to 1? Spec isn’t
+            # crystal clear; simplest: fast- forward to end of data- unit.
+            bs.pos = bs.len
+            dummy_route = RouteBlock(hour_raw, minute_raw, priority, link_count, [])
+            return SectionTravelTimeSegment(ext_flag, dummy_route, [])
+
+        # ── 基本構成（primary route） ──
+        start_pt = cls._parse_point(bs)
+        end_pt = cls._parse_point(bs)
+        vias = [cls._parse_point(bs) for _ in range(max(link_count - 2, 0))]
+
+        primary = RouteBlock(
+            hour_raw=hour_raw,
+            minute_raw=minute_raw,
+            priority=priority,
+            link_count=link_count,
+            points=[start_pt, *vias, end_pt],
+        )
+
+        # ── 拡張構成1 (optional alt- route groups) ──
+        alt_groups: list[AltRouteGroup] = []
+        if ext_flag == SectionTT_ExtFlag.BASIC_EXT1 and bs.pos < bs.len:
+            # Ext- 1 may repeat until new segment header or stream end.
+            while bs.pos < bs.len:
+                # Peek next two bits – if they look like a new segment header (b8,b7 of PB L1) break.
+                # We can safely peek because ConstBitStream supports pos restore.
+                peek = bs.read("uint:2")
+                bs.pos -= 2
+                if peek in {
+                    0,
+                    1,
+                    2,
+                    3,
+                }:  # could be next segment’s ext_flag value at byte boundary
+                    # ensure we are byte- aligned; segment headers start at byte boundary.
+                    if bs.pos % 8 == 0:
+                        break
+                # Otherwise parse one alt- route group
+                alt_groups.append(cls._parse_alt_group(bs))
+
+        return SectionTravelTimeSegment(ext_flag, primary, alt_groups)
+
+    # ──────────────────────────────────────────────────────────────
+    # Alt- route group parser
+    # ──────────────────────────────────────────────────────────────
+    @classmethod  # noqa: C901
+    def _parse_alt_group(cls, bs: ConstBitStream) -> AltRouteGroup:
+        try:
+            alt_cnt, _reserved3 = cast(tuple[int, int], bs.readlist("uint:5, uint:3"))
+        except ReadError as err:
+            raise ReadError("Incomplete AltRouteGroup header") from err
+
+        routes: list[RouteBlock] = []
+        for _ in range(alt_cnt):
+            try:
+                hour = bs.read("uint:5")
+                minute = bs.read("uint:6")
+                # align to next byte boundary
+                mis = bs.pos % 8
+                if mis:
+                    bs.read(f"pad:{8 - mis}")
+                lcnt = bs.read("uint:8")
+                st = cls._parse_point(bs)
+                en = cls._parse_point(bs)
+                vias = [cls._parse_point(bs) for _ in range(max(lcnt - 2, 0))]
+            except ReadError as err:
+                raise ReadError("Truncated AltRoute route block") from err
+            routes.append(RouteBlock(hour, minute, None, lcnt, [st, *vias, en]))
+
+        return AltRouteGroup(alt_cnt, routes)
+
+    # ──────────────────────────────────────────────────────────────
+    # Point parser
+    # ──────────────────────────────────────────────────────────────
+    @classmethod
+    def _parse_point(cls, bs: ConstBitStream) -> SectionPoint:
+        mesh, name_f, link_type_u2, link_hi = cast(
+            tuple[bool, bool, int, int], bs.readlist("bool, bool, uint:2, uint:4")
+        )
+        link_lo = bs.read("uint:8")
+        coord_x = coord_y = None
+        if mesh:
+            coord_x, coord_y = cast(tuple[int, int], bs.readlist("uint:8, uint:8"))
+        name = _read_name(bs) if name_f else None
+        return SectionPoint(
+            mesh_flag=mesh,
+            name_flag=name_f,
+            link_type=_safe_enum(LinkType, link_type_u2, "OTHER"),
+            link_number=(link_hi << 8) | link_lo,
+            coord_x_hi=coord_x,
+            coord_y_hi=coord_y,
+            name=name,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Glue helper                                                               #
 # ---------------------------------------------------------------------------
@@ -1071,8 +1268,10 @@ def data_unit_from_generic(generic: GenericDataUnit):
     """
     if generic.data_unit_parameter == 0x40:
         return TravelTimeDataUnit.from_generic(generic)
-    if generic.data_unit_parameter == 0x41:
+    elif generic.data_unit_parameter == 0x41:
         return RestrictionAccidentDataUnit.from_generic(generic)
-    if generic.data_unit_parameter == 0x42:
+    elif generic.data_unit_parameter == 0x42:
         return ParkingDataUnit.from_generic(generic)
+    elif generic.data_unit_parameter == 0x43:
+        return SectionTravelTimeDataUnit.from_generic(generic)
     return generic
