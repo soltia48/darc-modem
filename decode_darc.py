@@ -179,7 +179,7 @@ def run_decoder(args: CliArgs) -> int:
     except (KeyboardInterrupt, EOFError):
         return 0  # graceful termination
 
-    except Exception as exc:  # noqa: BLE001 - propagate as fatal
+    except Exception as exc:
         logging.exception("Fatal error: %s", exc)
         return 1
 

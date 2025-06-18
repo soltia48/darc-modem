@@ -97,7 +97,7 @@ class TravelTimeLinkRecord:
 
     # Helper props -------------------------------------------------------
     @property
-    def has_ext1(self) -> bool:  # noqa: D401 — property is fine
+    def has_ext1(self) -> bool:
         return self.ext1 is not None
 
     @property
@@ -173,7 +173,7 @@ class TravelTimeDataUnit(DataUnitBase):
     # Low-level parsers
     # --------------------------------------------------------------
     @staticmethod
-    def _parse_form0(reader: BitReader) -> TravelTimeLinkRecord:  # noqa: C901
+    def _parse_form0(reader: BitReader) -> TravelTimeLinkRecord:
         """Parse one **provide-form 0** record (8+ bits)."""
 
         byte = reader.u(8)

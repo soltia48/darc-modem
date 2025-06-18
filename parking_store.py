@@ -1,5 +1,15 @@
+"""Refactored ParkingStore and related helpers.
+
+This module provides a thread-safe, in-memory cache that deduplicates
+:class:`ParkingRecord` instances by normalized coordinates and exports them
+as GeoJSON.  The API is largely compatible with the original implementation
+while improving readability, separation of concerns, and testability.
+"""
+
+from __future__ import annotations
+
 import threading
-from typing import Any, Final
+from typing import Any, Final, Dict, Tuple
 
 import orjson
 
@@ -53,10 +63,10 @@ VACANCY_STATUS_TEXT: Final[dict[VacancyStatus, str]] = {
 }
 
 VACANCY_STATUS_COLOR: Final[dict[VacancyStatus, str]] = {
-    VacancyStatus.EMPTY: "#28a745",
-    VacancyStatus.CONGESTED: "#fd7e14",
-    VacancyStatus.FULL: "#dc3545",
-    VacancyStatus.CLOSED: "#6c757d",
+    VacancyStatus.EMPTY: "#28a745",  # green
+    VacancyStatus.CONGESTED: "#fd7e14",  # orange
+    VacancyStatus.FULL: "#dc3545",  # red
+    VacancyStatus.CLOSED: "#6c757d",  # gray
 }
 
 LINK_TYPE_TEXT: Final[dict[LinkType, str]] = {
@@ -88,12 +98,21 @@ DISCOUNT_TEXT: Final[dict[DiscountCondition, str]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Helper - coordinate normalization
+# Internal helpers
 # ---------------------------------------------------------------------------
+
+Coord = Tuple[float, float]
+Feature = Dict[str, Any]
 
 
 def _round_coord(value: float, digits: int = 7) -> float:
+    """Round coordinate value to *digits* decimal places (default: 7)."""
     return round(value, digits)
+
+
+def _format_hhmm(hour: int | None, minute: int | None) -> str:
+    """Return time as "HH:MM" or "--" when either component is ``None``."""
+    return "--" if hour is None or minute is None else f"{hour:02d}:{minute:02d}"
 
 
 # ---------------------------------------------------------------------------
@@ -102,80 +121,90 @@ def _round_coord(value: float, digits: int = 7) -> float:
 
 
 class ParkingStore:
-    """In-memory cache that deduplicates :class:`ParkingRecord` by coordinates."""
+    """Thread-safe, in-memory cache that deduplicates :class:`ParkingRecord` by
+    rounded coordinates.  `precision` controls the number of decimal digits used
+    for rounding (default: 7, roughly ~1.1 cm).
+    """
 
-    __slots__ = ("_data", "_lock")
+    __slots__ = ("_data", "_lock", "_precision")
 
-    def __init__(self) -> None:
-        self._data: dict[str, tuple[float, float, ParkingRecord]] = {}
+    def __init__(self, precision: int = 7) -> None:
+        self._precision = precision
+        # key -> ((lat, lon), record)
+        self._data: dict[str, tuple[Coord, ParkingRecord]] = {}
         self._lock = threading.Lock()
 
-    # ---------------- Public API ----------------
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
     def upsert(self, lat: float, lon: float, record: ParkingRecord) -> None:
-        lat_r, lon_r = _round_coord(lat), _round_coord(lon)
+        """Insert *record* or overwrite an existing one at the same rounded
+        coordinate.
+        """
+        lat_r, lon_r = _round_coord(lat, self._precision), _round_coord(
+            lon, self._precision
+        )
+        key = f"P:{lat_r},{lon_r}"
         with self._lock:
-            self._data[f"P:{lat_r},{lon_r}"] = (lat_r, lon_r, record)
+            self._data[key] = ((lat_r, lon_r), record)
 
     def to_geojson(self) -> dict[str, Any]:
+        """Return a GeoJSON FeatureCollection view of the current cache."""
         with self._lock:
-            snapshot = list(self._data.items())
-        features = [self._to_feature(k, *tpl) for k, tpl in snapshot]
+            snapshot = list(self._data.items())  # copy to avoid long lock hold
+        features = [self._to_feature(code, *payload) for code, payload in snapshot]
         return {"type": "FeatureCollection", "features": features}
 
-    def to_geojson_bytes(self, opts: int | None = None) -> bytes:
+    def to_geojson_bytes(self, *, opts: int | None = None) -> bytes:
+        """Serialize :meth:`to_geojson` result with *orjson*.
+
+        By default, ``OPT_NON_STR_KEYS`` and ``OPT_SERIALIZE_NUMPY`` are enabled
+        but you may override *opts* if needed.
+        """
         if opts is None:
             opts = orjson.OPT_NON_STR_KEYS | orjson.OPT_SERIALIZE_NUMPY
         return orjson.dumps(self.to_geojson(), option=opts)
 
-    # ---------------- Helpers ----------------
+    # Convenience dunder methods ------------------------------------------------
+    def __len__(self) -> int:
+        """Return the number of cached parking records."""
+        with self._lock:
+            return len(self._data)
+
+    def __iter__(self):
+        """Iterate over ``ParkingRecord`` instances (unsorted)."""
+        with self._lock:
+            return (record for (_, record) in self._data.values())
+
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
     @staticmethod
     def _to_feature(
-        code: str, lat: float, lon: float, rec: ParkingRecord
-    ) -> dict[str, Any]:
+        code: str, coord: Coord, rec: ParkingRecord
+    ) -> Feature:
+        """Convert a single cache entry to a GeoJSON *Feature*."""
+        lat, lon = coord
         props: dict[str, Any] = {
             "name": getattr(rec.ext1, "name", None),
             "vacancy_status": rec.vacancy_status.name,
             "vacancy_status_jp": VACANCY_STATUS_TEXT.get(rec.vacancy_status, "不明"),
-            "vacancy_color": VACANCY_STATUS_COLOR.get(rec.vacancy_status, "#6c757d"),
+            "vacancy_color": VACANCY_STATUS_COLOR.get(rec.vacancy_status, "#ffffff"),
         }
 
-        # --- Ext1 --------------------------------------------------------
+        # --- ext1 ------------------------------------------------------
         if (ext1 := getattr(rec, "ext1", None)) is not None:
             if ext1.entrance_distance is not None:
                 factor = 10 if ext1.distance_unit == DistanceUnitParking.TEN_M else 100
                 props["entrance_distance"] = f"{ext1.entrance_distance * factor} m"
-            road_label = None
-            if ext1.link_number != 0:
-                road_label = LINK_TYPE_TEXT.get(ext1.link_type, "")
-                road_label = f"{road_label} {ext1.link_number}".strip()
-            props["road_link"] = road_label
 
-        # --- Ext2 --------------------------------------------------------
+            if ext1.link_number:
+                road_prefix = LINK_TYPE_TEXT.get(ext1.link_type, "")
+                props["road_link"] = f"{road_prefix} {ext1.link_number}".strip()
+
+        # --- ext2 ------------------------------------------------------
         if (ext2 := getattr(rec, "ext2", None)) is not None:
-            props["capacity_class"] = CAPACITY_CLASS_TEXT.get(ext2.capacity_class)
-            if (rate := ext2.vacancy_rate_10pct) is not None:
-                props["vacancy_rate"] = f"{rate * 10}%"
-            props["waiting_time"] = (
-                f"{ext2.waiting_time_10min * 10}分"
-                if ext2.waiting_time_10min is not None
-                else "0分"
-            )
-            if ext2.fee_code is None:
-                props["fee_text"] = "料金不明"
-            else:
-                price = ext2.fee_code * 10
-                props["fee_text"] = (
-                    f"{price}円 / {FEE_UNIT_TEXT.get(ext2.fee_unit, '不明')}"
-                )
-            _fmt = lambda h, m10: (
-                "--" if h is None or m10 is None else f"{h:02d}:{m10 * 10:02d}"
-            )
-            props["hours_text"] = (
-                f"{_fmt(ext2.start_hour, ext2.start_min10)} - {_fmt(ext2.end_hour, ext2.end_min10)}"
-            )
-            props["height_limit"] = HEIGHT_LIMIT_TEXT.get(ext2.height_limit)
-            props["vehicle_limit"] = VEHICLE_LIMIT_TEXT.get(ext2.vehicle_limit)
-            props["discount"] = DISCOUNT_TEXT.get(ext2.discount_condition)
+            props.update(_props_from_ext2(ext2))
 
         return {
             "type": "Feature",
@@ -183,3 +212,37 @@ class ParkingStore:
             "geometry": {"type": "Point", "coordinates": [lon, lat]},
             "properties": props,
         }
+
+
+# ---------------------------------------------------------------------------
+# _props_from_ext2 (factored-out helper)
+# ---------------------------------------------------------------------------
+
+
+def _props_from_ext2(ext2) -> dict[str, Any]:  # type: ignore[valid-type]
+    """Return a dictionary of GeoJSON properties derived from *ext2*."""
+    props: dict[str, Any] = {
+        "capacity_class": CAPACITY_CLASS_TEXT.get(ext2.capacity_class),
+        "waiting_time": f"{ext2.waiting_time_min or 0}分",
+        "height_limit": HEIGHT_LIMIT_TEXT.get(ext2.height_limit),
+        "vehicle_limit": VEHICLE_LIMIT_TEXT.get(ext2.vehicle_limit),
+        "discount": DISCOUNT_TEXT.get(ext2.discount_condition),
+    }
+
+    # Vacancy rate -----------------------------------------------------
+    if (rate := ext2.vacancy_rate_pct) is not None:
+        props["vacancy_rate"] = f"{rate}%"
+
+    # Fees -------------------------------------------------------------
+    if ext2.fee_code is None:
+        props["fee_text"] = "料金不明"
+    else:
+        unit_label = FEE_UNIT_TEXT.get(ext2.fee_unit, "不明")
+        props["fee_text"] = f"{ext2.fee_code}円 / {unit_label}"
+
+    # Operating hours --------------------------------------------------
+    props["hours_text"] = (
+        f"{_format_hhmm(ext2.start_hour, ext2.start_min)} - {_format_hhmm(ext2.end_hour, ext2.end_min)}"
+    )
+
+    return props

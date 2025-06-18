@@ -141,14 +141,14 @@ class ParkingExt2:
 
     @property
     def fee_code(self) -> int | None:
-        return None if self.fee_code_raw == 2047 else self.fee_code_raw
+        return None if self.fee_code_raw == 2047 else self.fee_code_raw * 10
 
     @property
     def start_hour(self) -> int | None:  # 0-23 valid
         return None if self.start_hour_raw >= 24 else self.start_hour_raw
 
     @property
-    def start_min10(self) -> int | None:  # 0-5 → 0-50 min
+    def start_min(self) -> int | None:  # 0-5 → 0-50 min
         return None if self.start_min_raw >= 6 else self.start_min_raw * 10
 
     @property
@@ -156,7 +156,7 @@ class ParkingExt2:
         return None if self.end_hour_raw >= 24 else self.end_hour_raw
 
     @property
-    def end_min10(self) -> int | None:
+    def end_min(self) -> int | None:
         return None if self.end_min_raw >= 6 else self.end_min_raw * 10
 
 
@@ -204,7 +204,7 @@ class ParkingDataUnit(DataUnitBase):
     # ------------------------------------------------------------------
     # Record-level parser
     # ------------------------------------------------------------------
-    @classmethod  # noqa: C901 - complexity stems from spec, not logic
+    @classmethod
     def _parse_record(cls, r: BitReader) -> ParkingRecord:
         """Parse exactly one parking record."""
         try:

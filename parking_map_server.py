@@ -187,7 +187,8 @@ INDEX_HTML = """<!DOCTYPE html>
             <div class="legend-item"><span class="legend-swatch" style="background:${COLORS.EMPTY}"></span>空車</div>
             <div class="legend-item"><span class="legend-swatch" style="background:${COLORS.CONGEST}"></span>混雑</div>
             <div class="legend-item"><span class="legend-swatch" style="background:${COLORS.FULL}"></span>満車</div>
-            <div class="legend-item"><span class="legend-swatch" style="background:${COLORS.CLOSED}"></span>閉鎖/不明</div>
+            <div class="legend-item"><span class="legend-swatch" style="background:${COLORS.CLOSED}"></span>閉鎖</div>
+            <div class="legend-item"><span class="legend-swatch" style="background:#ffffff"></span>不明</div>
           `;
           return div;
         };

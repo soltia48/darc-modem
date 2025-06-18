@@ -1,5 +1,10 @@
 from logging import getLogger
+from time import sleep
 from typing import Final, TypeAlias
+
+from bitstring import Bits
+
+from .vics import descramble
 
 from .l2_data import (
     L2BlockIdentificationCode as BIC,
@@ -127,6 +132,14 @@ class L2FrameDecoder:
             )
             try:
                 frame = L2Frame.from_block_buffer(self._block_buffer)
+                for i in range(len(frame.blocks)):
+                    block = frame.blocks[i]
+                    block_bytes: bytes = block.to_buffer().bytes
+                    descrambled = descramble(i, block_bytes)
+                    frame.blocks[i] = L2InformationBlock.from_buffer(
+                        block.block_id, Bits(descrambled), error="no_correct"
+                    )
+                    sleep(0.01)
                 return frame
             finally:
                 self.reset()

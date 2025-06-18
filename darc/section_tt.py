@@ -130,7 +130,7 @@ class SectionTravelTimeDataUnit(DataUnitBase):
     @classmethod
     def _parse_segment(
         cls, reader: BitReader
-    ) -> SectionTravelTimeSegment:  # noqa: C901
+    ) -> SectionTravelTimeSegment:
         # ─ PB L1 ─
         ext_flag = SectionTTExtFlag(reader.u(2))
         reader.flag()  # 1 undefined bit
