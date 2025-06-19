@@ -20,30 +20,28 @@ Example values taken from the previous discussion:
 Running this file as a script prints both datums in decimal degrees and
 DMS.
 """
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import Tuple
 
 # ---------------------------------------------------------------------------
 # Constants (angles expressed in decimal degrees)
 # ---------------------------------------------------------------------------
 
-LAT_ORIGIN_DEG = 24 + 40 / 60          # 24°40′00″ N → 24.666 666…°
-LON_ORIGIN_DEG = 122.0                 # 122°00′00″ E
+LAT_ORIGIN_DEG = 24 + 40 / 60  # 24°40′00″ N → 24.666 666…°
+LON_ORIGIN_DEG = 122.0  # 122°00′00″ E
 
-FIRST_MESH_LAT = 40 / 60              # 40′   = 0.666 666 …°
-FIRST_MESH_LON = 1.0                  # 1°
-SECOND_MESH_LAT = FIRST_MESH_LAT / 8  # 5′    = 0.083 333 …°
+FIRST_MESH_LAT = 40 / 60  # 40′   = 0.666 666 …°
+FIRST_MESH_LON = 1.0  # 1°
+SECOND_MESH_LAT = FIRST_MESH_LAT / 8  # 5′    = 0.083 333 …°
 SECOND_MESH_LON = FIRST_MESH_LON / 8  # 7′30″ = 0.125°
 
-# How much one relative unit (1 / 10 000) represents inside a 2nd mesh
-UNIT_LAT = SECOND_MESH_LAT / 10_000   # ≈ 0.000 008 333 …°  (≈ 0.925 m)
-UNIT_LON = SECOND_MESH_LON / 10_000   # ≈ 0.000 012 5°     (≈ 1.12 m @ 35 °N)
+# How much one relative unit (1 / 10 000) represents inside a 2nd mesh
+UNIT_LAT = SECOND_MESH_LAT / 10_000  # ≈ 0.000 008 333 …°  (≈ 0.925 m)
+UNIT_LON = SECOND_MESH_LON / 10_000  # ≈ 0.000 012 5°     (≈ 1.12 m @ 35 °N)
 
 # ---------------------------------------------------------------------------
 # Data classes & helpers
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class DMS:
@@ -68,23 +66,13 @@ def deg_to_dms(angle: float) -> DMS:
     return DMS(deg, minutes, seconds)
 
 
-def tokyo_to_wgs84(lat_t: float, lon_t: float) -> Tuple[float, float]:
+def tokyo_to_wgs84(lat_t: float, lon_t: float) -> tuple[float, float]:
     """Approximate Tokyo-datum → WGS-84 conversion.
     Formula: Geospatial Information Authority of Japan (GSI),
     accuracy ≈ a few metres in Japan.
     """
-    lat_w = (
-        lat_t
-        - 0.00010695 * lat_t
-        + 0.000017464 * lon_t
-        + 0.0046017
-    )
-    lon_w = (
-        lon_t
-        - 0.000046038 * lat_t
-        - 0.000083043 * lon_t
-        + 0.010040
-    )
+    lat_w = lat_t - 0.00010695 * lat_t + 0.000017464 * lon_t + 0.0046017
+    lon_w = lon_t - 0.000046038 * lat_t - 0.000083043 * lon_t + 0.010040
     return lat_w, lon_w
 
 
@@ -92,11 +80,12 @@ def tokyo_to_wgs84(lat_t: float, lon_t: float) -> Tuple[float, float]:
 # Core calculation
 # ---------------------------------------------------------------------------
 
-def parse_mesh(value: int) -> Tuple[int, int, int]:
+
+def parse_mesh(value: int) -> tuple[int, int, int]:
     """Return (1st_mesh_idx, 2nd_mesh_idx, 4-bit_rel) from 12-bit value."""
     first = (value >> 7) & 0x1F  # upper 5 bits
     second = (value >> 4) & 0x07  # next 3 bits
-    rel4 = value & 0x0F           # lower 4 bits
+    rel4 = value & 0x0F  # lower 4 bits
     return first, second, rel4
 
 
@@ -106,19 +95,19 @@ def arib_to_tokyo_deg(
     rel_x: int,
     rel_y: int,
     ignore_rel4: bool = True,
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     """Convert ARIB coordinates to Tokyo datum (decimal degrees).
 
     Parameters
     ----------
     map_x, map_y : int (0-4095)
         12-bit Map Position X / Y
-    rel_x, rel_y : int (0-10 000)
-        Relative position inside the 2-nd mesh (10 000 × 10 000 grid).
+    rel_x, rel_y : int (0-10 000)
+        Relative position inside the 2-nd mesh (10 000 x 10 000 grid).
     ignore_rel4 : bool, default True
         If False, 4-bit sub-mesh offsets contained in map_x/map_y are added
-        *before* applying the 10 000-grid offset. The ARIB spec often uses
-        either the 4-bit or the 10 000-grid refinement—not both—so the
+        *before* applying the 10 000-grid offset. The ARIB spec often uses
+        either the 4-bit or the 10 000-grid refinement—not both—so the
         default is to ignore them.
     """
     x1, x2, x_rel4 = parse_mesh(map_x)
@@ -132,7 +121,7 @@ def arib_to_tokyo_deg(
         lat += y_rel4 * (SECOND_MESH_LAT / 16)
         lon += x_rel4 * (SECOND_MESH_LON / 16)
 
-    # Apply 10 000-grid relative offset
+    # Apply 10 000-grid relative offset
     lat += rel_y * UNIT_LAT
     lon += rel_x * UNIT_LON
 

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Self
+from typing import Self
 
 from bitstring import ConstBitStream, ReadError
 
@@ -177,9 +177,10 @@ class ParkingRecord:
 # Main data-unit parser
 # ────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class ParkingDataUnit(DataUnitBase):
-    records: List[ParkingRecord]
+    records: list[ParkingRecord]
 
     # ------------------------------------------------------------------
     @classmethod

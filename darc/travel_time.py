@@ -1,6 +1,6 @@
 import enum
 from dataclasses import dataclass
-from typing import List, Self
+from typing import Self
 
 from bitstring import ConstBitStream
 
@@ -114,7 +114,7 @@ class TravelTimeLinkRecord:
 class TravelTimeDataUnit(DataUnitBase):
     provide_form: ProvideForm
     link_count: int
-    records: List[TravelTimeLinkRecord]
+    records: list[TravelTimeLinkRecord]
 
     # --------------------------------------------------------------
     # Factory
@@ -151,7 +151,7 @@ class TravelTimeDataUnit(DataUnitBase):
 
         # ─ Record parsing ─
         num_records = 1 if info_single else link_count
-        records: List[TravelTimeLinkRecord] = []
+        records: list[TravelTimeLinkRecord] = []
 
         if provide_form is ProvideForm.TRAVEL_TIME:
             for _ in range(num_records):

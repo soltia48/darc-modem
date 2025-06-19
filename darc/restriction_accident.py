@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Self, Tuple
+from typing import Self
 
 from bitstring import ConstBitStream
 
@@ -183,7 +183,7 @@ class RestrictionAccidentRecord:
     restriction_content: RestrictionContent
     distance_unit: DistanceUnit
     restriction_length_raw: int
-    basics: List[RestrictionAccidentBasicInfo]
+    basics: list[RestrictionAccidentBasicInfo]
     ext1: RestrictionAccidentExt1 | None = None
     ext2: RestrictionAccidentExt2 | None = None
 
@@ -202,13 +202,13 @@ class RestrictionAccidentRecord:
 # --------------------------------------------------------------------------- #
 @dataclass
 class RestrictionAccidentDataUnit(DataUnitBase):
-    records: List[RestrictionAccidentRecord]
+    records: list[RestrictionAccidentRecord]
 
     # ---------------------------- factory ---------------------------------- #
     @classmethod
     def from_generic(cls, generic: GenericDataUnit) -> Self:
         rdr = BitReader(ConstBitStream(generic.data_unit_data))
-        recs: List[RestrictionAccidentRecord] = []
+        recs: list[RestrictionAccidentRecord] = []
         while rdr.pos < rdr.len:
             start_pos = rdr.pos
             try:
@@ -232,7 +232,7 @@ class RestrictionAccidentDataUnit(DataUnitBase):
         distance_unit = DistanceUnit(rdr.u(2))
         restr_len_raw = rdr.u(6)
 
-        basics: List[RestrictionAccidentBasicInfo] = []
+        basics: list[RestrictionAccidentBasicInfo] = []
         remaining = link_total
 
         # 1) start block
@@ -246,9 +246,9 @@ class RestrictionAccidentDataUnit(DataUnitBase):
 
         # 3) via blocks
         while remaining > 0:
-            via, covered = RestrictionAccidentDataUnit._parse_via(rdr)
+            via = RestrictionAccidentDataUnit._parse_via(rdr)
             basics.append(via)
-            remaining -= covered
+            remaining -= 1
             if remaining < 0:
                 raise BitstreamParseError("Via block count exceeds header link_total")
 
@@ -319,7 +319,7 @@ class RestrictionAccidentDataUnit(DataUnitBase):
         )
 
     @staticmethod
-    def _parse_via(rdr: BitReader) -> Tuple[RestrictionAccidentBasicInfo, int]:
+    def _parse_via(rdr: BitReader) -> RestrictionAccidentBasicInfo:
         mesh = rdr.flag()
         name_f = rdr.flag()
         link_type = LinkType(rdr.u(2))
@@ -341,4 +341,4 @@ class RestrictionAccidentDataUnit(DataUnitBase):
             coord_y_hi=coord_y,
             name=name,
         )
-        return info, cont_links + 1  # this block itself + subsequent links
+        return info

@@ -1,15 +1,5 @@
-"""Decoder for ARIB STD-B3 §3.1.4 - Section Travel-Time (parameter 0x43).
-
-The binary payload is converted into *plain Python dataclasses* so that higher-
-level application code can work with meaningful objects instead of raw bits.
-All bit-twiddling is delegated to :class:`helpers.BitReader`, resulting in a
-compact, readable parser that is still faithful to the original specification.
-"""
-
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import List, Self
+from typing import Self
 
 from bitstring import ConstBitStream, ReadError
 
@@ -71,7 +61,7 @@ class RouteBlock:
     minute_raw: int  # 6-bit travel-time minute (0-63)
     priority: SectionTTPriority | None  # only set for the primary route
     link_count: int
-    points: List[SectionPoint]
+    points: list[SectionPoint]
 
 
 @dataclass(slots=True)
@@ -79,7 +69,7 @@ class AltRouteGroup:
     """One *拡張構成1* group containing between 0 and 31 alternate routes."""
 
     alt_count: int
-    routes: List[RouteBlock]
+    routes: list[RouteBlock]
 
 
 @dataclass(slots=True)
@@ -88,7 +78,7 @@ class SectionTravelTimeSegment:
 
     ext_flag: SectionTTExtFlag
     primary_route: RouteBlock
-    alt_route_groups: List[AltRouteGroup]
+    alt_route_groups: list[AltRouteGroup]
 
 
 # --------------------------------------------------------------------------- #
@@ -98,7 +88,7 @@ class SectionTravelTimeSegment:
 
 @dataclass
 class SectionTravelTimeDataUnit(DataUnitBase):
-    segments: List[SectionTravelTimeSegment]
+    segments: list[SectionTravelTimeSegment]
 
     # ------------------------------------------------------------------ #
     # Factory                                                            #
@@ -106,7 +96,7 @@ class SectionTravelTimeDataUnit(DataUnitBase):
     @classmethod
     def from_generic(cls, generic: GenericDataUnit) -> Self:
         reader = BitReader(ConstBitStream(generic.data_unit_data))
-        segments: List[SectionTravelTimeSegment] = []
+        segments: list[SectionTravelTimeSegment] = []
 
         while reader.pos < reader.len:
             start_pos = reader.pos  # progress guard
@@ -128,9 +118,7 @@ class SectionTravelTimeDataUnit(DataUnitBase):
     # Segment-level parser                                               #
     # ------------------------------------------------------------------ #
     @classmethod
-    def _parse_segment(
-        cls, reader: BitReader
-    ) -> SectionTravelTimeSegment:
+    def _parse_segment(cls, reader: BitReader) -> SectionTravelTimeSegment:
         # ─ PB L1 ─
         ext_flag = SectionTTExtFlag(reader.u(2))
         reader.flag()  # 1 undefined bit
@@ -166,7 +154,7 @@ class SectionTravelTimeDataUnit(DataUnitBase):
         )
 
         # ─ Optional Alt-route groups (extension-1) ─
-        alt_groups: List[AltRouteGroup] = []
+        alt_groups: list[AltRouteGroup] = []
         if ext_flag == SectionTTExtFlag.BASIC_EXT1 and reader.pos < reader.len:
             while reader.pos < reader.len:
                 # If byte-aligned, peek next 2 bits - could be the ext_flag of the next segment
@@ -183,7 +171,7 @@ class SectionTravelTimeDataUnit(DataUnitBase):
     def _parse_alt_group(cls, reader: BitReader) -> AltRouteGroup:
         alt_cnt = reader.u(5)
         reader.u(3)  # reserved bits
-        routes: List[RouteBlock] = []
+        routes: list[RouteBlock] = []
 
         for _ in range(alt_cnt):
             hour_raw = reader.u(5)
